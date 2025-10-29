@@ -285,104 +285,157 @@ class WallpaperConfigGUI:
         canvas.pack(side="left", fill="both", expand=True)
         scrollbar.pack(side="right", fill="y")
 
-        # Presets Section
-        presets_group = ttk.LabelFrame(scrollable_frame, text="Presets Configuration", padding=10)
-        presets_group.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
+        # API Keys Section
+        api_group = ttk.LabelFrame(scrollable_frame, text="API Keys Configuration", padding=10)
+        api_group.pack(fill=tk.X, padx=10, pady=5)
 
-        ttk.Label(presets_group, text="View and manage your wallpaper presets:",
-                 font=("Arial", 10)).pack(anchor=tk.W, pady=5)
+        # Load current API keys from .env
+        env_path = Path(__file__).parent / '.env'
+        current_wallhaven_key = ""
+        current_pexels_key = ""
 
-        # Presets display area
-        presets_text = scrolledtext.ScrolledText(presets_group, height=12, width=80, wrap=tk.WORD)
-        presets_text.pack(fill=tk.BOTH, expand=True, pady=5)
+        if env_path.exists():
+            with open(env_path, 'r', encoding='utf-8') as f:
+                for line in f:
+                    if line.startswith('WALLHAVEN_API_KEY='):
+                        current_wallhaven_key = line.split('=', 1)[1].strip()
+                    elif line.startswith('PEXELS_API_KEY='):
+                        current_pexels_key = line.split('=', 1)[1].strip()
 
-        # Load presets info
+        ttk.Label(api_group, text="Wallhaven API Key:").grid(row=0, column=0, sticky=tk.W, pady=5, padx=5)
+        self.wallhaven_key_var = tk.StringVar(value=current_wallhaven_key)
+        wallhaven_entry = ttk.Entry(api_group, textvariable=self.wallhaven_key_var, width=50, show="*")
+        wallhaven_entry.grid(row=0, column=1, pady=5, padx=5)
+        ttk.Button(api_group, text="👁", width=3,
+                  command=lambda: self._toggle_password_visibility(wallhaven_entry)).grid(row=0, column=2, padx=2)
+
+        ttk.Label(api_group, text="Pexels API Key:").grid(row=1, column=0, sticky=tk.W, pady=5, padx=5)
+        self.pexels_key_var = tk.StringVar(value=current_pexels_key)
+        pexels_entry = ttk.Entry(api_group, textvariable=self.pexels_key_var, width=50, show="*")
+        pexels_entry.grid(row=1, column=1, pady=5, padx=5)
+        ttk.Button(api_group, text="👁", width=3,
+                  command=lambda: self._toggle_password_visibility(pexels_entry)).grid(row=1, column=2, padx=2)
+
+        ttk.Button(api_group, text="💾 Save API Keys", command=self._save_api_keys).grid(row=2, column=1, pady=10, sticky=tk.E)
+
+        # Folders Configuration Section
+        folders_group = ttk.LabelFrame(scrollable_frame, text="Folders Configuration", padding=10)
+        folders_group.pack(fill=tk.X, padx=10, pady=5)
+
+        cache_dir = CacheSettings.get("directory") or os.path.join(os.path.expanduser("~"), "WallpaperChangerCache")
+
+        ttk.Label(folders_group, text="Cache Directory:").grid(row=0, column=0, sticky=tk.W, pady=5, padx=5)
+        self.cache_dir_var = tk.StringVar(value=cache_dir)
+        ttk.Entry(folders_group, textvariable=self.cache_dir_var, width=50).grid(row=0, column=1, pady=5, padx=5)
+        ttk.Button(folders_group, text="📁 Browse",
+                  command=lambda: self._browse_directory(self.cache_dir_var)).grid(row=0, column=2, padx=2)
+        ttk.Button(folders_group, text="📂 Open",
+                  command=lambda: os.startfile(self.cache_dir_var.get()) if os.path.exists(self.cache_dir_var.get()) else None).grid(row=0, column=3, padx=2)
+
+        # Advanced Scheduler Section
+        scheduler_group = ttk.LabelFrame(scrollable_frame, text="Advanced Scheduler Settings", padding=10)
+        scheduler_group.pack(fill=tk.X, padx=10, pady=5)
+
+        ttk.Label(scheduler_group, text="Initial Delay (minutes):").grid(row=0, column=0, sticky=tk.W, pady=5, padx=5)
+        self.initial_delay_var = tk.IntVar(value=self._extract_dict_value(self._get_config_content(),
+                                                                           "SchedulerSettings", "initial_delay_minutes") or 1)
+        ttk.Spinbox(scheduler_group, from_=0, to=60, textvariable=self.initial_delay_var, width=15).grid(row=0, column=1, pady=5, padx=5, sticky=tk.W)
+
+        ttk.Label(scheduler_group, text="Quiet Hours:").grid(row=1, column=0, sticky=tk.W, pady=5, padx=5)
+        quiet_hours_frame = ttk.Frame(scheduler_group)
+        quiet_hours_frame.grid(row=1, column=1, columnspan=2, pady=5, sticky=tk.W)
+
+        ttk.Label(quiet_hours_frame, text="Start:").pack(side=tk.LEFT, padx=2)
+        self.quiet_start_var = tk.StringVar(value="23:30")
+        ttk.Entry(quiet_hours_frame, textvariable=self.quiet_start_var, width=8).pack(side=tk.LEFT, padx=2)
+
+        ttk.Label(quiet_hours_frame, text="End:").pack(side=tk.LEFT, padx=5)
+        self.quiet_end_var = tk.StringVar(value="07:00")
+        ttk.Entry(quiet_hours_frame, textvariable=self.quiet_end_var, width=8).pack(side=tk.LEFT, padx=2)
+
+        ttk.Label(scheduler_group, text="Active Days:").grid(row=2, column=0, sticky=tk.W, pady=5, padx=5)
+        days_frame = ttk.Frame(scheduler_group)
+        days_frame.grid(row=2, column=1, columnspan=2, pady=5, sticky=tk.W)
+
+        self.days_vars = {}
+        days = [("Mon", "mon"), ("Tue", "tue"), ("Wed", "wed"), ("Thu", "thu"),
+                ("Fri", "fri"), ("Sat", "sat"), ("Sun", "sun")]
+        for idx, (label, value) in enumerate(days):
+            var = tk.BooleanVar(value=True)
+            self.days_vars[value] = var
+            ttk.Checkbutton(days_frame, text=label, variable=var).grid(row=0, column=idx, padx=2)
+
+        # Default Preset Section
+        preset_group = ttk.LabelFrame(scrollable_frame, text="Default Preset", padding=10)
+        preset_group.pack(fill=tk.X, padx=10, pady=5)
+
+        ttk.Label(preset_group, text="Default Preset at Startup:").grid(row=0, column=0, sticky=tk.W, pady=5, padx=5)
+
         try:
             from preset_manager import PresetManager
             preset_mgr = PresetManager()
-            presets_info = "CONFIGURED PRESETS:\n" + "=" * 80 + "\n\n"
+            preset_names = [p.name for p in preset_mgr.list_presets()]
+            default_preset = self._extract_value(self._get_config_content(), "DefaultPreset") or "workspace"
+        except:
+            preset_names = ["workspace", "relax"]
+            default_preset = "workspace"
 
-            for preset in preset_mgr.list_presets():
-                presets_info += f"📌 {preset.title} ({preset.name})\n"
-                presets_info += f"   Description: {preset.description}\n"
-                presets_info += f"   Providers: {', '.join(preset.providers) if preset.providers else 'Default'}\n"
-                presets_info += f"   Queries: {', '.join(preset.queries)}\n"
-                if preset.exclude:
-                    presets_info += f"   Exclude: {', '.join(preset.exclude)}\n"
-                if preset.colors:
-                    presets_info += f"   Colors: {', '.join(preset.colors)}\n"
-                if preset.ratios:
-                    presets_info += f"   Ratios: {', '.join(preset.ratios)}\n"
-                presets_info += f"   Purity: {preset.purity}\n"
-                presets_info += f"   Resolution: {preset.screen_resolution}\n"
-                presets_info += "\n"
+        self.default_preset_var = tk.StringVar(value=default_preset)
+        ttk.Combobox(preset_group, textvariable=self.default_preset_var,
+                    values=preset_names, width=30).grid(row=0, column=1, pady=5, padx=5, sticky=tk.W)
 
-            presets_text.insert("1.0", presets_info)
-            presets_text.config(state=tk.DISABLED)
-        except Exception as e:
-            presets_text.insert("1.0", f"Error loading presets: {e}")
-            presets_text.config(state=tk.DISABLED)
+        # Info Section
+        info_group = ttk.LabelFrame(scrollable_frame, text="ℹ️ Information", padding=10)
+        info_group.pack(fill=tk.X, padx=10, pady=5)
 
-        ttk.Label(presets_group, text="To edit presets, modify the 'Presets' list in config.py",
-                 font=("Arial", 9), foreground="gray").pack(anchor=tk.W, pady=2)
+        info_text = (
+            "• API Keys are stored securely in the .env file\n"
+            "• Cache directory stores downloaded wallpapers\n"
+            "• Quiet hours prevent wallpaper changes during specified times\n"
+            "• Active days control which days the scheduler runs\n"
+            "• All changes require clicking 'Save Configuration' at the bottom"
+        )
+        ttk.Label(info_group, text=info_text, font=("Arial", 9), justify=tk.LEFT).pack(anchor=tk.W, padx=5, pady=5)
 
-        # Monitors Section
-        monitors_group = ttk.LabelFrame(scrollable_frame, text="Monitor Overrides", padding=10)
-        monitors_group.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
-
-        ttk.Label(monitors_group, text="Per-monitor configuration overrides:",
-                 font=("Arial", 10)).pack(anchor=tk.W, pady=5)
-
-        # Monitors display area
-        monitors_text = scrolledtext.ScrolledText(monitors_group, height=12, width=80, wrap=tk.WORD)
-        monitors_text.pack(fill=tk.BOTH, expand=True, pady=5)
-
-        # Load monitors info
+    def _get_config_content(self) -> str:
+        """Get config.py content"""
         try:
             with open(self.config_path, "r", encoding="utf-8") as f:
-                content = f.read()
+                return f.read()
+        except:
+            return ""
 
-            # Extract Monitors configuration
-            monitors_info = "MONITOR OVERRIDES:\n" + "=" * 80 + "\n\n"
+    def _toggle_password_visibility(self, entry_widget) -> None:
+        """Toggle password visibility for API key fields"""
+        current_show = entry_widget.cget("show")
+        entry_widget.configure(show="" if current_show == "*" else "*")
 
-            if "Monitors = [" in content:
-                # Simple extraction (this is a basic parser, a real one would use ast)
-                monitors_info += "Monitor configurations found in config.py:\n\n"
-                monitors_info += "To view or edit monitor overrides, check the 'Monitors' list in config.py\n\n"
-                monitors_info += "Each monitor can have:\n"
-                monitors_info += "  - name: Display name\n"
-                monitors_info += "  - preset: Preset to use for this monitor\n"
-                monitors_info += "  - provider: Override provider (wallhaven/pexels)\n"
-                monitors_info += "  - query: Custom search query\n"
-                monitors_info += "  - screen_resolution: Minimum resolution\n"
-                monitors_info += "  - purity: Purity level (100/110/111)\n"
-                monitors_info += "  - wallhaven_sorting: Sorting method\n"
-                monitors_info += "  - wallhaven_top_range: Top range period\n"
-            else:
-                monitors_info += "No monitor overrides configured.\n\n"
-                monitors_info += "Monitor overrides allow you to set different wallpapers for each screen.\n"
+    def _browse_directory(self, var: tk.StringVar) -> None:
+        """Open directory browser"""
+        from tkinter import filedialog
+        directory = filedialog.askdirectory(initialdir=var.get(), title="Select Directory")
+        if directory:
+            var.set(directory)
 
-            monitors_text.insert("1.0", monitors_info)
-            monitors_text.config(state=tk.DISABLED)
+    def _save_api_keys(self) -> None:
+        """Save API keys to .env file"""
+        try:
+            env_path = Path(__file__).parent / '.env'
+            wallhaven_key = self.wallhaven_key_var.get().strip()
+            pexels_key = self.pexels_key_var.get().strip()
+
+            content = f"""# Wallhaven API Key from https://wallhaven.cc/settings/account
+WALLHAVEN_API_KEY={wallhaven_key}
+
+# Pexels API Key from https://www.pexels.com/api/new/
+PEXELS_API_KEY={pexels_key}
+"""
+            with open(env_path, 'w', encoding='utf-8') as f:
+                f.write(content)
+
+            messagebox.showinfo("Success", "API Keys saved successfully to .env file!")
         except Exception as e:
-            monitors_text.insert("1.0", f"Error loading monitor configuration: {e}")
-            monitors_text.config(state=tk.DISABLED)
-
-        ttk.Label(monitors_group, text="To edit monitor overrides, modify the 'Monitors' list in config.py",
-                 font=("Arial", 9), foreground="gray").pack(anchor=tk.W, pady=2)
-
-        # Provider Sequence Section
-        sequence_group = ttk.LabelFrame(scrollable_frame, text="Provider Rotation", padding=10)
-        sequence_group.pack(fill=tk.X, padx=10, pady=5)
-
-        ttk.Label(sequence_group, text="Provider Sequence:").grid(row=0, column=0, sticky=tk.W, pady=2)
-        providers_list = self.config_data.get("ProvidersSequence", ["wallhaven", "pexels"])
-        providers_display = ", ".join(providers_list) if providers_list else "Not configured"
-        ttk.Label(sequence_group, text=providers_display, font=("Arial", 10, "bold"),
-                 foreground="#0066cc").grid(row=0, column=1, sticky=tk.W, padx=10)
-
-        ttk.Label(sequence_group, text="Providers will rotate in this order on each wallpaper change.",
-                 font=("Arial", 9), foreground="gray").grid(row=1, column=0, columnspan=2, sticky=tk.W, pady=2)
+            messagebox.showerror("Error", f"Failed to save API keys: {e}")
 
     def _load_monitors(self) -> None:
         """Load available monitors"""
@@ -576,15 +629,27 @@ class WallpaperConfigGUI:
                     new_lines.append(f'    "interval_minutes": {self.interval_var.get()},\n')
                 elif '"jitter_minutes":' in line:
                     new_lines.append(f'    "jitter_minutes": {self.jitter_var.get()},\n')
+                elif '"initial_delay_minutes":' in line:
+                    new_lines.append(f'    "initial_delay_minutes": {self.initial_delay_var.get()},\n')
                 elif '"max_items":' in line and "CacheSettings" in "".join(new_lines[-10:]):
                     new_lines.append(f'    "max_items": {self.cache_max_var.get()},\n')
                 elif '"enable_offline_rotation":' in line:
                     new_lines.append(f'    "enable_offline_rotation": {self.cache_offline_var.get()},\n')
+                elif '"directory":' in line and "CacheSettings" in "".join(new_lines[-10:]):
+                    cache_path = self.cache_dir_var.get() if hasattr(self, 'cache_dir_var') else ""
+                    new_lines.append(f'    "directory": "{cache_path}",\n')
+                elif line.strip().startswith("DefaultPreset ="):
+                    default_preset = self.default_preset_var.get() if hasattr(self, 'default_preset_var') else "workspace"
+                    new_lines.append(f'DefaultPreset = "{default_preset}"\n')
                 else:
                     new_lines.append(line)
 
             with open(self.config_path, "w", encoding="utf-8") as f:
                 f.writelines(new_lines)
+
+            # Save API keys separately
+            if hasattr(self, 'wallhaven_key_var') and hasattr(self, 'pexels_key_var'):
+                self._save_api_keys()
 
             messagebox.showinfo("Success", "Configuration saved successfully!\n\nRestart the application for changes to take effect.")
         except Exception as e:

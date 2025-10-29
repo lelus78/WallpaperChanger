@@ -12,10 +12,38 @@ from config import CacheSettings
 
 
 class WallpaperConfigGUI:
+    # Modern color scheme
+    COLORS = {
+        'bg_primary': '#1e1e2e',
+        'bg_secondary': '#2a2a3e',
+        'bg_tertiary': '#363650',
+        'accent': '#89b4fa',
+        'accent_hover': '#b4befe',
+        'success': '#a6e3a1',
+        'warning': '#f9e2af',
+        'error': '#f38ba8',
+        'text_primary': '#cdd6f4',
+        'text_secondary': '#a6adc8',
+        'text_muted': '#6c7086',
+        'border': '#45475a',
+        'shadow': '#11111b',
+    }
+
     def __init__(self, root: tk.Tk) -> None:
         self.root = root
         self.root.title("Wallpaper Changer - Configuration")
-        self.root.geometry("900x700")
+        self.root.geometry("1100x750")
+
+        # Set window icon if available
+        try:
+            icon_path = Path(__file__).parent / "icon.ico"
+            if icon_path.exists():
+                self.root.iconbitmap(icon_path)
+        except:
+            pass
+
+        # Configure modern theme
+        self._setup_theme()
 
         self.config_path = Path(__file__).parent / "config.py"
         self.config_data: Dict[str, Any] = {}
@@ -31,6 +59,171 @@ class WallpaperConfigGUI:
 
         self._load_config()
         self._create_widgets()
+
+    def _setup_theme(self) -> None:
+        """Setup modern theme with custom styles"""
+        style = ttk.Style()
+
+        # Use a modern theme as base
+        try:
+            style.theme_use('clam')
+        except:
+            style.theme_use('default')
+
+        # Configure root window
+        self.root.configure(bg=self.COLORS['bg_primary'])
+
+        # Configure Notebook (tabs)
+        style.configure('TNotebook',
+            background=self.COLORS['bg_primary'],
+            borderwidth=0,
+            tabmargins=[2, 5, 2, 0])
+
+        style.configure('TNotebook.Tab',
+            background=self.COLORS['bg_secondary'],
+            foreground=self.COLORS['text_secondary'],
+            padding=[20, 10],
+            borderwidth=0,
+            font=('Segoe UI', 10, 'bold'))
+
+        style.map('TNotebook.Tab',
+            background=[('selected', self.COLORS['bg_tertiary'])],
+            foreground=[('selected', self.COLORS['accent'])],
+            expand=[('selected', [1, 1, 1, 0])])
+
+        # Configure Frames
+        style.configure('TFrame',
+            background=self.COLORS['bg_primary'])
+
+        style.configure('Card.TFrame',
+            background=self.COLORS['bg_secondary'],
+            borderwidth=1,
+            relief='solid')
+
+        # Configure LabelFrame
+        style.configure('TLabelframe',
+            background=self.COLORS['bg_secondary'],
+            foreground=self.COLORS['text_primary'],
+            bordercolor=self.COLORS['border'],
+            borderwidth=2,
+            relief='flat',
+            font=('Segoe UI', 10, 'bold'))
+
+        style.configure('TLabelframe.Label',
+            background=self.COLORS['bg_secondary'],
+            foreground=self.COLORS['accent'],
+            font=('Segoe UI', 11, 'bold'))
+
+        # Configure Labels
+        style.configure('TLabel',
+            background=self.COLORS['bg_secondary'],
+            foreground=self.COLORS['text_primary'],
+            font=('Segoe UI', 9))
+
+        style.configure('Title.TLabel',
+            font=('Segoe UI', 12, 'bold'),
+            foreground=self.COLORS['accent'])
+
+        style.configure('Subtitle.TLabel',
+            font=('Segoe UI', 10),
+            foreground=self.COLORS['text_secondary'])
+
+        # Configure Buttons
+        style.configure('TButton',
+            background=self.COLORS['accent'],
+            foreground='#1e1e2e',
+            borderwidth=0,
+            focuscolor='none',
+            font=('Segoe UI', 9, 'bold'),
+            padding=[15, 8])
+
+        style.map('TButton',
+            background=[('active', self.COLORS['accent_hover']),
+                       ('pressed', self.COLORS['accent'])],
+            foreground=[('active', '#1e1e2e')])
+
+        style.configure('Accent.TButton',
+            background=self.COLORS['accent'],
+            font=('Segoe UI', 10, 'bold'),
+            padding=[20, 10])
+
+        style.configure('Success.TButton',
+            background=self.COLORS['success'],
+            foreground='#1e1e2e')
+
+        style.configure('Danger.TButton',
+            background=self.COLORS['error'],
+            foreground='#1e1e2e')
+
+        # Configure Entry
+        style.configure('TEntry',
+            fieldbackground=self.COLORS['bg_tertiary'],
+            foreground=self.COLORS['text_primary'],
+            bordercolor=self.COLORS['border'],
+            lightcolor=self.COLORS['border'],
+            darkcolor=self.COLORS['border'],
+            insertcolor=self.COLORS['text_primary'],
+            font=('Segoe UI', 9))
+
+        # Configure Combobox
+        style.configure('TCombobox',
+            fieldbackground=self.COLORS['bg_tertiary'],
+            background=self.COLORS['bg_tertiary'],
+            foreground=self.COLORS['text_primary'],
+            arrowcolor=self.COLORS['text_primary'],
+            bordercolor=self.COLORS['border'],
+            lightcolor=self.COLORS['border'],
+            darkcolor=self.COLORS['border'],
+            font=('Segoe UI', 9))
+
+        style.map('TCombobox',
+            fieldbackground=[('readonly', self.COLORS['bg_tertiary'])],
+            foreground=[('readonly', self.COLORS['text_primary'])])
+
+        # Configure Spinbox
+        style.configure('TSpinbox',
+            fieldbackground=self.COLORS['bg_tertiary'],
+            foreground=self.COLORS['text_primary'],
+            arrowcolor=self.COLORS['text_primary'],
+            bordercolor=self.COLORS['border'],
+            font=('Segoe UI', 9))
+
+        # Configure Checkbutton
+        style.configure('TCheckbutton',
+            background=self.COLORS['bg_secondary'],
+            foreground=self.COLORS['text_primary'],
+            font=('Segoe UI', 9))
+
+        style.map('TCheckbutton',
+            background=[('active', self.COLORS['bg_tertiary'])],
+            foreground=[('active', self.COLORS['accent'])])
+
+        # Configure Scrollbar
+        style.configure('Vertical.TScrollbar',
+            background=self.COLORS['bg_tertiary'],
+            troughcolor=self.COLORS['bg_secondary'],
+            bordercolor=self.COLORS['border'],
+            arrowcolor=self.COLORS['text_primary'])
+
+        # Configure Canvas for gallery
+        self.root.option_add('*TCombobox*Listbox.background', self.COLORS['bg_tertiary'])
+        self.root.option_add('*TCombobox*Listbox.foreground', self.COLORS['text_primary'])
+        self.root.option_add('*TCombobox*Listbox.selectBackground', self.COLORS['accent'])
+        self.root.option_add('*TCombobox*Listbox.selectForeground', '#1e1e2e')
+
+    def _bind_mousewheel(self, widget) -> None:
+        """Bind mouse wheel scrolling to canvas"""
+        def on_mousewheel(event):
+            widget.yview_scroll(int(-1 * (event.delta / 120)), "units")
+
+        def on_enter(event):
+            widget.bind_all("<MouseWheel>", on_mousewheel)
+
+        def on_leave(event):
+            widget.unbind_all("<MouseWheel>")
+
+        widget.bind("<Enter>", on_enter)
+        widget.bind("<Leave>", on_leave)
 
     def _load_config(self) -> None:
         """Load current configuration from config.py"""
@@ -128,7 +321,8 @@ class WallpaperConfigGUI:
     def _create_settings_tab(self) -> None:
         """Create settings tab content"""
         # Create canvas with scrollbar
-        canvas = tk.Canvas(self.settings_frame)
+        canvas = tk.Canvas(self.settings_frame, bg=self.COLORS['bg_primary'],
+                          highlightthickness=0)
         scrollbar = ttk.Scrollbar(self.settings_frame, orient="vertical", command=canvas.yview)
         scrollable_frame = ttk.Frame(canvas)
 
@@ -142,6 +336,9 @@ class WallpaperConfigGUI:
 
         canvas.pack(side="left", fill="both", expand=True)
         scrollbar.pack(side="right", fill="y")
+
+        # Enable mouse wheel scrolling
+        self._bind_mousewheel(canvas)
 
         # Provider Settings
         provider_group = ttk.LabelFrame(scrollable_frame, text="Provider Settings", padding=10)
@@ -230,6 +427,32 @@ class WallpaperConfigGUI:
 
     def _create_cache_tab(self) -> None:
         """Create cache/gallery tab content"""
+        # Prominent "Change Wallpaper Now" button
+        change_wallpaper_frame = tk.Frame(self.cache_frame, bg=self.COLORS['bg_primary'])
+        change_wallpaper_frame.pack(fill=tk.X, padx=15, pady=15)
+
+        change_btn = tk.Button(change_wallpaper_frame,
+                              text="🎨 CHANGE WALLPAPER NOW",
+                              bg=self.COLORS['accent'],
+                              fg='#1e1e2e',
+                              font=('Segoe UI', 12, 'bold'),
+                              relief=tk.FLAT,
+                              cursor='hand2',
+                              padx=30,
+                              pady=15,
+                              command=self._change_wallpaper_now)
+        change_btn.pack(fill=tk.X)
+
+        # Button hover effect
+        def btn_enter(e):
+            change_btn.configure(bg=self.COLORS['accent_hover'])
+
+        def btn_leave(e):
+            change_btn.configure(bg=self.COLORS['accent'])
+
+        change_btn.bind("<Enter>", btn_enter)
+        change_btn.bind("<Leave>", btn_leave)
+
         # Top controls
         control_frame = ttk.Frame(self.cache_frame)
         control_frame.pack(fill=tk.X, padx=10, pady=5)
@@ -246,7 +469,8 @@ class WallpaperConfigGUI:
         gallery_container = ttk.Frame(self.cache_frame)
         gallery_container.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
 
-        self.gallery_canvas = tk.Canvas(gallery_container, bg="#f0f0f0")
+        self.gallery_canvas = tk.Canvas(gallery_container, bg=self.COLORS['bg_primary'],
+                                        highlightthickness=0)
         gallery_scrollbar = ttk.Scrollbar(gallery_container, orient="vertical", command=self.gallery_canvas.yview)
         self.gallery_frame = ttk.Frame(self.gallery_canvas)
 
@@ -261,6 +485,9 @@ class WallpaperConfigGUI:
         self.gallery_canvas.pack(side="left", fill="both", expand=True)
         gallery_scrollbar.pack(side="right", fill="y")
 
+        # Enable mouse wheel scrolling
+        self._bind_mousewheel(self.gallery_canvas)
+
         # Load monitors
         self._load_monitors()
 
@@ -270,7 +497,8 @@ class WallpaperConfigGUI:
     def _create_advanced_tab(self) -> None:
         """Create advanced parameters tab content"""
         # Create canvas with scrollbar
-        canvas = tk.Canvas(self.advanced_frame)
+        canvas = tk.Canvas(self.advanced_frame, bg=self.COLORS['bg_primary'],
+                          highlightthickness=0)
         scrollbar = ttk.Scrollbar(self.advanced_frame, orient="vertical", command=canvas.yview)
         scrollable_frame = ttk.Frame(canvas)
 
@@ -284,6 +512,9 @@ class WallpaperConfigGUI:
 
         canvas.pack(side="left", fill="both", expand=True)
         scrollbar.pack(side="right", fill="y")
+
+        # Enable mouse wheel scrolling
+        self._bind_mousewheel(canvas)
 
         # API Keys Section
         api_group = ttk.LabelFrame(scrollable_frame, text="API Keys Configuration", padding=10)
@@ -505,8 +736,22 @@ PEXELS_API_KEY={pexels_key}
 
     def _create_thumbnail(self, entry: Dict[str, Any], row: int, col: int) -> None:
         """Create a thumbnail widget for a wallpaper"""
-        frame = ttk.Frame(self.gallery_frame, relief=tk.RAISED, borderwidth=2)
-        frame.grid(row=row, column=col, padx=5, pady=5, sticky=tk.NSEW)
+        # Create modern card frame
+        card = tk.Frame(self.gallery_frame,
+                       bg=self.COLORS['bg_secondary'],
+                       highlightbackground=self.COLORS['border'],
+                       highlightthickness=1)
+        card.grid(row=row, column=col, padx=8, pady=8, sticky=tk.NSEW)
+
+        # Add hover effect
+        def on_enter(e):
+            card.configure(highlightbackground=self.COLORS['accent'], highlightthickness=2)
+
+        def on_leave(e):
+            card.configure(highlightbackground=self.COLORS['border'], highlightthickness=1)
+
+        card.bind("<Enter>", on_enter)
+        card.bind("<Leave>", on_leave)
 
         try:
             # Check if file exists
@@ -517,31 +762,72 @@ PEXELS_API_KEY={pexels_key}
             # Load and resize image
             img = Image.open(image_path)
             original_size = img.size  # Store original resolution
+
+            # Add rounded corners effect by adding border
             img.thumbnail((250, 150), Image.Resampling.LANCZOS if hasattr(Image, 'Resampling') else Image.LANCZOS)
             photo = ImageTk.PhotoImage(img)
 
-            # Image label
-            img_label = ttk.Label(frame, image=photo)
-            img_label.image = photo  # Keep reference
-            img_label.pack(padx=5, pady=5)
+            # Image container
+            img_container = tk.Frame(card, bg=self.COLORS['bg_tertiary'])
+            img_container.pack(padx=8, pady=8, fill=tk.BOTH, expand=True)
 
-            # Resolution label
-            resolution_text = f"{original_size[0]}x{original_size[1]}"
-            ttk.Label(frame, text=resolution_text, font=("Arial", 9, "bold"),
-                     foreground="#0066cc").pack()
+            # Image label
+            img_label = tk.Label(img_container, image=photo, bg=self.COLORS['bg_tertiary'])
+            img_label.image = photo  # Keep reference
+            img_label.pack()
+
+            # Info container
+            info_container = tk.Frame(card, bg=self.COLORS['bg_secondary'])
+            info_container.pack(fill=tk.X, padx=10, pady=5)
+
+            # Resolution label with icon
+            resolution_text = f"📐 {original_size[0]}x{original_size[1]}"
+            resolution_label = tk.Label(info_container, text=resolution_text,
+                                       bg=self.COLORS['bg_secondary'],
+                                       fg=self.COLORS['accent'],
+                                       font=('Segoe UI', 9, 'bold'))
+            resolution_label.pack(anchor=tk.W)
 
             # Info label
-            info_text = entry.get("source_info", "Unknown")[:40]
-            ttk.Label(frame, text=info_text, wraplength=230, font=("Arial", 8)).pack(pady=2)
+            info_text = entry.get("source_info", "Unknown")[:45]
+            info_label = tk.Label(info_container, text=info_text,
+                                 bg=self.COLORS['bg_secondary'],
+                                 fg=self.COLORS['text_secondary'],
+                                 font=('Segoe UI', 8),
+                                 wraplength=250,
+                                 justify=tk.LEFT)
+            info_label.pack(anchor=tk.W, pady=(2, 5))
 
-            # Apply button
-            apply_btn = ttk.Button(frame, text="Apply to Selected Monitor",
-                                  command=lambda e=entry: self._apply_wallpaper(e))
-            apply_btn.pack(pady=5)
+            # Apply button with accent style
+            apply_btn = tk.Button(card, text="✨ Apply to Monitor",
+                                 bg=self.COLORS['accent'],
+                                 fg='#1e1e2e',
+                                 font=('Segoe UI', 9, 'bold'),
+                                 relief=tk.FLAT,
+                                 cursor='hand2',
+                                 padx=15,
+                                 pady=8,
+                                 command=lambda e=entry: self._apply_wallpaper(e))
+            apply_btn.pack(pady=(0, 10), padx=10, fill=tk.X)
+
+            # Button hover effect
+            def btn_enter(e):
+                apply_btn.configure(bg=self.COLORS['accent_hover'])
+
+            def btn_leave(e):
+                apply_btn.configure(bg=self.COLORS['accent'])
+
+            apply_btn.bind("<Enter>", btn_enter)
+            apply_btn.bind("<Leave>", btn_leave)
 
         except Exception as e:
-            ttk.Label(frame, text=f"Error loading image:\n{str(e)[:50]}",
-                     wraplength=230, foreground="red").pack(pady=10)
+            error_label = tk.Label(card, text=f"❌ Error loading image:\n{str(e)[:50]}",
+                                  bg=self.COLORS['bg_secondary'],
+                                  fg=self.COLORS['error'],
+                                  font=('Segoe UI', 9),
+                                  wraplength=250,
+                                  justify=tk.CENTER)
+            error_label.pack(pady=20, padx=10)
 
     def _apply_wallpaper(self, entry: Dict[str, Any]) -> None:
         """Apply selected wallpaper to monitor"""
@@ -582,6 +868,72 @@ PEXELS_API_KEY={pexels_key}
 
         except Exception as e:
             messagebox.showerror("Error", f"Failed to apply wallpaper: {e}")
+
+    def _change_wallpaper_now(self) -> None:
+        """Trigger immediate wallpaper change via main app"""
+        try:
+            # Try to trigger wallpaper change via keyboard hotkey simulation
+            # This is the safest way to trigger the main app's change function
+            import subprocess
+
+            # Check if main app is running by looking for PID file
+            pid_path = Path(__file__).parent / "wallpaperchanger.pid"
+
+            if not pid_path.exists():
+                messagebox.showwarning("App Not Running",
+                    "The Wallpaper Changer app is not currently running.\n\n"
+                    "Please start it first using:\n"
+                    "• launchers/start_wallpaper_changer.vbs\n"
+                    "• or 'python main.py'")
+                return
+
+            # Simulate the hotkey press to trigger wallpaper change
+            try:
+                import keyboard
+                keybind = self.keybind_var.get() if hasattr(self, 'keybind_var') else 'ctrl+alt+w'
+
+                # Show loading message
+                loading_window = tk.Toplevel(self.root)
+                loading_window.title("Changing Wallpaper")
+                loading_window.geometry("350x120")
+                loading_window.configure(bg=self.COLORS['bg_secondary'])
+                loading_window.transient(self.root)
+                loading_window.grab_set()
+
+                # Center the loading window
+                loading_window.update_idletasks()
+                x = (loading_window.winfo_screenwidth() // 2) - (350 // 2)
+                y = (loading_window.winfo_screenheight() // 2) - (120 // 2)
+                loading_window.geometry(f"+{x}+{y}")
+
+                msg_label = tk.Label(loading_window,
+                                    text="🎨 Changing wallpaper...\n\nPlease wait a moment.",
+                                    bg=self.COLORS['bg_secondary'],
+                                    fg=self.COLORS['text_primary'],
+                                    font=('Segoe UI', 11))
+                msg_label.pack(expand=True)
+
+                loading_window.update()
+
+                # Trigger hotkey
+                keyboard.press_and_release(keybind)
+
+                # Wait a bit for the change to happen
+                self.root.after(2000, lambda: loading_window.destroy())
+                self.root.after(2500, lambda: messagebox.showinfo("Success",
+                    "Wallpaper change triggered!\n\n"
+                    "The wallpaper should update shortly."))
+
+            except ImportError:
+                messagebox.showerror("Error",
+                    "Keyboard module not available.\n\n"
+                    "Use the system tray icon to change wallpaper,\n"
+                    "or press the hotkey: " + keybind)
+            except Exception as e:
+                messagebox.showerror("Error", f"Failed to trigger wallpaper change: {e}")
+
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to change wallpaper: {e}")
 
     def _clear_cache(self) -> None:
         """Clear wallpaper cache"""

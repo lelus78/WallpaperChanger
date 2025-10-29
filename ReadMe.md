@@ -4,11 +4,13 @@ The **Wallpaper Changer** is a Python program that automatically refreshes your 
 
 ## Features
 
-- System tray companion with quick actions (change now, rotate presets, toggle scheduler, play next cached wallpaper, open cache, exit).
+- **GUI Configuration Tool** with Settings tab and Wallpaper Gallery to easily configure the app and manage cached wallpapers.
+- System tray companion with quick actions (change now, rotate presets, toggle scheduler, play next cached wallpaper, open settings GUI, exit).
 - Configurable presets with include/exclude keywords, colour cues, aspect-ratio filters, and provider-specific options (sorting/toplist on Wallhaven, orientation on Pexels).
 - Flexible scheduler with interval, jitter, day filters, and quiet hours to avoid changes while you work or sleep.
 - Local cache with metadata and offline rotation, letting you replay favourite wallpapers even without a connection.
-- One-click launcher scripts (`launchers/start_wallpaper_changer.vbs`, `launchers/stop_wallpaper_changer.vbs`) to start or stop the app without opening a console.
+- **Wallpaper Gallery** in the GUI to browse cached wallpapers and apply them to specific monitors with one click.
+- One-click launcher scripts (`launchers/start_wallpaper_changer.vbs`, `launchers/stop_wallpaper_changer.vbs`, `launchers/start_config_gui.vbs`) to start or stop the app without opening a console.
 - Provider rotation and per-monitor overrides (provider, preset, resolution) including automatic panorama fallback when the Windows per-monitor API is unavailable.
 - Global hotkey (default `ctrl+alt+w`) to trigger an instant refresh.
 - Automatic BMP conversion so Windows reliably applies the wallpaper across multiple monitors.
@@ -19,14 +21,17 @@ The **Wallpaper Changer** is a Python program that automatically refreshes your 
 2. Install dependencies inside your terminal from the project directory:
 
    ```bash
-   pip install requests pillow keyboard pystray
+   pip install requests pillow keyboard pystray python-dotenv
    ```
 
-3. Obtain API keys:
+3. Configure API keys:
+   - Copy `.env.example` to `.env` and add your API keys
    - **Wallhaven** – visit the [Wallhaven API settings](https://wallhaven.cc/help/api) page and generate a key.
    - **Pexels** – create an account and request a key at [pexels.com/api/new](https://www.pexels.com/api/new/).
 
-4. Adjust `config.py` to match your preferences: add API keys, tweak presets/scheduler/cache, and customise per-monitor overrides.
+4. Customize settings:
+   - **Easy way**: Launch the GUI (`launchers/start_config_gui.vbs` or `python gui_config.py`)
+   - **Manual way**: Edit `config.py` to adjust presets/scheduler/cache and per-monitor overrides.
 
 ## Configuration Highlights (`config.py`)
 

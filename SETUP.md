@@ -28,9 +28,21 @@
 5. **Run the application**
    - **Windows (background)**: Double-click `launchers/start_wallpaper_changer.vbs`
    - **Console**: `python main.py`
+   - **Settings GUI**: Double-click `launchers/start_config_gui.vbs` or run `python gui_config.py`
    - **Stop**: Double-click `launchers/stop_wallpaper_changer.vbs` or use tray icon
 
 ## Configuration
+
+### GUI Configuration Tool
+
+The easiest way to configure the app is using the **Settings GUI**:
+
+- **Launch**: Double-click `launchers/start_config_gui.vbs` or run `python gui_config.py`
+- **Access from tray**: Right-click the tray icon and select "Open Settings GUI"
+
+The GUI provides:
+- **Settings Tab**: Configure all parameters (provider, queries, scheduler, cache, hotkeys)
+- **Wallpaper Gallery Tab**: Browse cached wallpapers and apply them to specific monitors
 
 ### API Keys (.env file)
 
@@ -39,7 +51,7 @@ WALLHAVEN_API_KEY=your_wallhaven_key_here
 PEXELS_API_KEY=your_pexels_key_here
 ```
 
-### Main Settings (config.py)
+### Main Settings (config.py or GUI)
 
 - **Provider**: Choose `"wallhaven"` or `"pexels"` as default provider
 - **ProvidersSequence**: Rotate between providers on each update

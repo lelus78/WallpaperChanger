@@ -1,3 +1,5 @@
+import os
+import subprocess
 import threading
 from typing import List, Optional
 
@@ -50,6 +52,8 @@ class TrayApp:
             pystray.MenuItem("Next From Cache", self._next_from_cache, enabled=self._cache_available),
             pystray.MenuItem("Open Cache Folder", self._open_cache),
             pystray.Menu.SEPARATOR,
+            pystray.MenuItem("Open Settings GUI", self._open_settings_gui),
+            pystray.Menu.SEPARATOR,
             pystray.MenuItem("Exit", self._quit),
         )
 
@@ -65,6 +69,15 @@ class TrayApp:
     def _open_cache(self, icon: pystray.Icon, item: pystray.MenuItem) -> None:
         if self.controller.cache_manager:
             self.controller.cache_manager.open_folder()
+
+    def _open_settings_gui(self, icon: pystray.Icon, item: pystray.MenuItem) -> None:
+        """Open the settings GUI"""
+        try:
+            script_dir = os.path.dirname(os.path.abspath(__file__))
+            gui_script = os.path.join(script_dir, "gui_config.py")
+            subprocess.Popen(["pythonw", gui_script], shell=False)
+        except Exception as e:
+            print(f"Failed to open settings GUI: {e}")
 
     def _toggle_scheduler(self, icon: pystray.Icon, item: pystray.MenuItem) -> None:
         self.controller.scheduler.toggle()

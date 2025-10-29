@@ -76,6 +76,17 @@ class CacheManager:
         with self._lock:
             return bool(self._index.get("items"))
 
+    def list_entries(self) -> List[Dict]:
+        """Return list of cached entries, most recent first"""
+        with self._lock:
+            items = self._index.get("items", [])
+            return list(reversed(items))
+
+    @property
+    def cache_dir(self) -> str:
+        """Return cache directory path"""
+        return self.directory
+
     def prune(self) -> None:
         with self._lock:
             items = self._index.get("items", [])

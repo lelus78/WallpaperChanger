@@ -294,8 +294,24 @@ class WallpaperConfigGUI:
         entries = self.cache_manager.list_entries()
 
         if not entries:
-            ttk.Label(self.gallery_frame, text="No cached wallpapers found.",
-                     font=("Arial", 12)).pack(pady=20)
+            info_frame = ttk.Frame(self.gallery_frame)
+            info_frame.pack(pady=20, padx=20)
+
+            ttk.Label(info_frame, text="No cached wallpapers found.",
+                     font=("Arial", 12, "bold")).pack(pady=10)
+            ttk.Label(info_frame, text="Wallpapers will appear here after the app downloads them.",
+                     font=("Arial", 10)).pack(pady=5)
+            ttk.Label(info_frame, text=f"Cache location: {self.cache_manager.cache_dir}",
+                     font=("Arial", 9), foreground="gray").pack(pady=5)
+
+            # Check if cache directory exists
+            if os.path.exists(self.cache_manager.cache_dir):
+                cache_files = [f for f in os.listdir(self.cache_manager.cache_dir)
+                              if f.lower().endswith(('.jpg', '.jpeg', '.png', '.bmp'))]
+                if cache_files:
+                    ttk.Label(info_frame,
+                             text=f"Found {len(cache_files)} image files in cache, but index may be empty.",
+                             font=("Arial", 9), foreground="orange").pack(pady=5)
             return
 
         # Create grid of thumbnails
@@ -303,7 +319,9 @@ class WallpaperConfigGUI:
         col = 0
         max_cols = 3
 
-        for entry in entries[:30]:  # Show last 30
+        print(f"Loading {len(entries)} wallpapers from cache...")
+        for idx, entry in enumerate(entries[:30]):  # Show last 30
+            print(f"Entry {idx}: {entry.get('path', 'NO PATH')}")
             self._create_thumbnail(entry, row, col)
             col += 1
             if col >= max_cols:
@@ -316,9 +334,14 @@ class WallpaperConfigGUI:
         frame.grid(row=row, column=col, padx=5, pady=5, sticky=tk.NSEW)
 
         try:
+            # Check if file exists
+            image_path = entry.get("path", "")
+            if not image_path or not os.path.exists(image_path):
+                raise FileNotFoundError(f"Image not found: {image_path}")
+
             # Load and resize image
-            img = Image.open(entry["path"])
-            img.thumbnail((250, 150), RESAMPLE_LANCZOS)
+            img = Image.open(image_path)
+            img.thumbnail((250, 150), Image.Resampling.LANCZOS if hasattr(Image, 'Resampling') else Image.LANCZOS)
             photo = ImageTk.PhotoImage(img)
 
             # Image label
@@ -336,7 +359,8 @@ class WallpaperConfigGUI:
             apply_btn.pack(pady=5)
 
         except Exception as e:
-            ttk.Label(frame, text=f"Error loading image:\n{str(e)[:30]}").pack(pady=10)
+            ttk.Label(frame, text=f"Error loading image:\n{str(e)[:50]}",
+                     wraplength=230, foreground="red").pack(pady=10)
 
     def _apply_wallpaper(self, entry: Dict[str, Any]) -> None:
         """Apply selected wallpaper to monitor"""

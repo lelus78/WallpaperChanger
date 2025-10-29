@@ -58,6 +58,10 @@ class WallpaperConfigGUI:
         )
 
         self._load_config()
+
+        # Check and start main app if not running
+        self._ensure_main_app_running()
+
         self._create_widgets()
 
     def _setup_theme(self) -> None:
@@ -225,6 +229,110 @@ class WallpaperConfigGUI:
         widget.bind("<Enter>", on_enter)
         widget.bind("<Leave>", on_leave)
 
+    def _ensure_main_app_running(self) -> None:
+        """Ensure the main wallpaper app is running, start it if not"""
+        import subprocess
+
+        pid_path = Path(__file__).parent / "wallpaperchanger.pid"
+
+        if not pid_path.exists():
+            # Ask user if they want to start the main app
+            result = messagebox.askyesno(
+                "Start Wallpaper Changer?",
+                "The Wallpaper Changer service is not running.\n\n"
+                "Would you like to start it now?\n\n"
+                "(The service is required for automatic wallpaper changes)"
+            )
+
+            if result:
+                try:
+                    # Start the main app in background
+                    main_script = Path(__file__).parent / "main.py"
+                    subprocess.Popen(
+                        ["pythonw", str(main_script)],
+                        creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0
+                    )
+                    messagebox.showinfo(
+                        "Service Started",
+                        "Wallpaper Changer service started successfully!\n\n"
+                        "The service is now running in the background."
+                    )
+                except Exception as e:
+                    messagebox.showerror(
+                        "Error",
+                        f"Failed to start Wallpaper Changer service:\n{e}\n\n"
+                        "Please start it manually using:\n"
+                        "• launchers/start_wallpaper_changer.vbs\n"
+                        "• or 'python main.py'"
+                    )
+
+    def _check_app_status(self) -> bool:
+        """Check if main app is running"""
+        pid_path = Path(__file__).parent / "wallpaperchanger.pid"
+        return pid_path.exists()
+
+    def _update_status_indicator(self) -> None:
+        """Update the status indicator"""
+        if hasattr(self, 'status_label'):
+            is_running = self._check_app_status()
+            if is_running:
+                self.status_label.configure(
+                    text="🟢 Service Running",
+                    foreground=self.COLORS['success']
+                )
+            else:
+                self.status_label.configure(
+                    text="🔴 Service Stopped",
+                    foreground=self.COLORS['error']
+                )
+
+        # Schedule next update
+        self.root.after(3000, self._update_status_indicator)
+
+    def _toggle_service(self) -> None:
+        """Toggle the wallpaper service on/off"""
+        import subprocess
+
+        is_running = self._check_app_status()
+
+        if is_running:
+            # Stop the service
+            result = messagebox.askyesno(
+                "Stop Service?",
+                "Are you sure you want to stop the Wallpaper Changer service?\n\n"
+                "Automatic wallpaper changes will be disabled."
+            )
+
+            if result:
+                try:
+                    pid_path = Path(__file__).parent / "wallpaperchanger.pid"
+                    if pid_path.exists():
+                        with open(pid_path, 'r') as f:
+                            pid = int(f.read().strip())
+
+                        # Kill the process
+                        if os.name == 'nt':
+                            subprocess.run(['taskkill', '/F', '/PID', str(pid)], check=True)
+                        else:
+                            os.kill(pid, 9)
+
+                        messagebox.showinfo("Service Stopped", "Wallpaper Changer service stopped successfully.")
+                        self._update_status_indicator()
+                except Exception as e:
+                    messagebox.showerror("Error", f"Failed to stop service: {e}")
+        else:
+            # Start the service
+            try:
+                main_script = Path(__file__).parent / "main.py"
+                subprocess.Popen(
+                    ["pythonw", str(main_script)],
+                    creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0
+                )
+                messagebox.showinfo("Service Started", "Wallpaper Changer service started successfully!")
+                self.root.after(1000, self._update_status_indicator)
+            except Exception as e:
+                messagebox.showerror("Error", f"Failed to start service: {e}")
+
     def _load_config(self) -> None:
         """Load current configuration from config.py"""
         try:
@@ -291,9 +399,49 @@ class WallpaperConfigGUI:
 
     def _create_widgets(self) -> None:
         """Create GUI widgets"""
+        # Status bar at the top
+        status_frame = tk.Frame(self.root, bg=self.COLORS['bg_secondary'], height=40)
+        status_frame.pack(fill=tk.X, padx=0, pady=0)
+        status_frame.pack_propagate(False)
+
+        # Status indicator
+        status_container = tk.Frame(status_frame, bg=self.COLORS['bg_secondary'])
+        status_container.pack(side=tk.RIGHT, padx=15, pady=8)
+
+        self.status_label = tk.Label(status_container,
+                                     text="🟢 Service Running",
+                                     bg=self.COLORS['bg_secondary'],
+                                     fg=self.COLORS['success'],
+                                     font=('Segoe UI', 9, 'bold'))
+        self.status_label.pack(side=tk.LEFT, padx=5)
+
+        # Start/Stop button
+        self.service_btn = tk.Button(status_container,
+                                     text="⚙️ Service",
+                                     bg=self.COLORS['bg_tertiary'],
+                                     fg=self.COLORS['text_primary'],
+                                     font=('Segoe UI', 8, 'bold'),
+                                     relief=tk.FLAT,
+                                     cursor='hand2',
+                                     padx=10,
+                                     pady=4,
+                                     command=self._toggle_service)
+        self.service_btn.pack(side=tk.LEFT, padx=5)
+
+        # App title on the left
+        title_label = tk.Label(status_frame,
+                              text="🎨 Wallpaper Changer Configuration",
+                              bg=self.COLORS['bg_secondary'],
+                              fg=self.COLORS['accent'],
+                              font=('Segoe UI', 11, 'bold'))
+        title_label.pack(side=tk.LEFT, padx=15, pady=8)
+
+        # Start status update loop
+        self._update_status_indicator()
+
         # Create notebook (tabs)
         self.notebook = ttk.Notebook(self.root)
-        self.notebook.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+        self.notebook.pack(fill=tk.BOTH, expand=True, padx=10, pady=(5, 10))
 
         # Tab 1: Settings
         self.settings_frame = ttk.Frame(self.notebook)

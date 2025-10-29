@@ -1,2 +1,30 @@
 *.pyc
 __*/
+
+# Environment variables and API keys
+.env
+.env.local
+
+# Temporary files
+temp.txt
+*.tmp
+
+# Cache and wallpaper files
+WallpaperChangerCache/
+wallpaper*.jpg
+wallpaper*.bmp
+wallpaper*.png
+
+# PID file
+wallpaperchanger.pid
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db

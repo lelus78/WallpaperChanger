@@ -1,53 +1,94 @@
 # Wallpaper Changer
 
-The **Wallpaper Changer** is a Python program that allows you to automatically change your desktop wallpaper using random images from the Wallhaven API. You can also set a hotkey combination to manually trigger the wallpaper change.
+The **Wallpaper Changer** is a Python program that automatically refreshes your desktop wallpaper using random images from configurable providers (Wallhaven or Pexels). It now bundles a Windows tray companion, scheduling, caching, presets, and one-click launchers so you can tailor wallpaper rotation to your workflow.
 
 ## Features
 
-- Retrieves a random wallpaper URL from the Wallhaven API based on a specified search query, API key, and purity level.
-- Downloads the wallpaper image from the retrieved URL.
-- Sets the downloaded image as the desktop wallpaper.
-- Provides an option to change the wallpaper by pressing a specific key combination.
+- System tray companion with quick actions (change now, rotate presets, toggle scheduler, play next cached wallpaper, open cache, exit).
+- Configurable presets with include/exclude keywords, colour cues, aspect-ratio filters, and provider-specific options (sorting/toplist on Wallhaven, orientation on Pexels).
+- Flexible scheduler with interval, jitter, day filters, and quiet hours to avoid changes while you work or sleep.
+- Local cache with metadata and offline rotation, letting you replay favourite wallpapers even without a connection.
+- One-click launcher scripts (`launchers/start_wallpaper_changer.vbs`, `launchers/stop_wallpaper_changer.vbs`) to start or stop the app without opening a console.
+- Provider rotation and per-monitor overrides (provider, preset, resolution) including automatic panorama fallback when the Windows per-monitor API is unavailable.
+- Global hotkey (default `ctrl+alt+w`) to trigger an instant refresh.
+- Automatic BMP conversion so Windows reliably applies the wallpaper across multiple monitors.
 
 ## Installation
 
-To run the Wallpaper Changer program, follow these steps:
+1. Install Python (3.10 or newer recommended). Download it from [python.org](https://www.python.org/downloads/).
+2. Install dependencies inside your terminal from the project directory:
 
-1. Install Python: Make sure you have Python installed on your system. You can download the latest version of Python from the official website: [python.org](https://www.python.org/downloads/).
+   ```bash
+   pip install requests pillow keyboard pystray
+   ```
 
-2. Install the required packages: Open a terminal or command prompt and navigate to the directory containing the program files. Run the following command to install the necessary packages:
-  
-  ```pip install requests pillow keyboard```
+3. Obtain API keys:
+   - **Wallhaven** – visit the [Wallhaven API settings](https://wallhaven.cc/help/api) page and generate a key.
+   - **Pexels** – create an account and request a key at [pexels.com/api/new](https://www.pexels.com/api/new/).
 
-3. Obtain a Wallhaven API key: Visit the [Wallhaven API](https://wallhaven.cc/help/api) page and follow the instructions to obtain an API key. Note down the API key for later use.
+4. Adjust `config.py` to match your preferences: add API keys, tweak presets/scheduler/cache, and customise per-monitor overrides.
 
-4. Download the program files: Download the program files from the repository or copy the provided code into a file with the `.py` extension.
+## Configuration Highlights (`config.py`)
 
-5. Create a configuration file: Create a new file named `config.py` in the same directory as the program files. Open the `config.py` file in a text editor and define the following variables:
+- `Provider` / `ProvidersSequence`: default provider(s) and rotation order.
+- `ApiKey` / `PexelsApiKey` / `PexelsMode`: provider credentials and default mode (`search` or `curated` for Pexels).
+- `CacheSettings`: cache directory, size cap, and offline rotation toggle.
+- `SchedulerSettings`: enable/disable scheduler, interval, jitter, initial delay, quiet hours, and active days.
+- `Presets`: named preset list defining providers, include/exclude keywords, colours, ratios, and provider-specific options (`wallhaven.sorting`, `wallhaven.top_range`, `pexels.orientation`, etc.).
+- `DefaultPreset`: preset activated at startup.
+- `Monitors`: per-monitor overrides (physical order) allowing preset/provider/query/resolution customisation.
+- `KeyBind`: global hotkey for manual refresh.
 
-- `Query`: Specify the search query for wallpapers (e.g., "nature", "space", "cars").
-- `ApiKey`: Set your Wallhaven API key obtained in step 3.
-- `PurityLevel`: Choose the purity level for the wallpapers ("sfw", "sketchy", "nsfw").
-- `ScreenResolution`: Choose the Screen Resolution for the wallpapers ("1280x720", "1920x1080", "2560x1440").
-- `KeyBind`: Define the key combination to trigger wallpaper change (e.g., "ctrl+shift+c").
+Example monitor override:
 
-Save the `config.py` file after defining the variables.
+```python
+Monitors = [
+    {
+        "name": "Full HD",
+        "preset": "workspace",
+        "provider": "",
+        "query": "",
+        "screen_resolution": "1920x1080",
+        "purity": "100",
+        "wallhaven_sorting": "toplist",
+        "wallhaven_top_range": "1w",
+    },
+    {
+        "name": "Ultrawide",
+        "preset": "relax",
+        "provider": "",
+        "query": "",
+        "screen_resolution": "3440x1440",
+        "purity": "100",
+        "wallhaven_sorting": "toplist",
+        "wallhaven_top_range": "3d",
+    },
+]
+```
 
 ## Usage
 
-1. Run the program: Open a terminal or command prompt and navigate to the directory containing the program files. Run the following command to execute the program:
+1. Launch the application by double-clicking `launchers/start_wallpaper_changer.vbs`. The script runs `main.py` in the background without opening a console window.
+   - Prefer the terminal? You can still run `python main.py`.
+   - On startup the first wallpaper change happens immediately and the **Wallpaper Changer** tray icon appears in the notification area.
 
-  ```python main.py```
+2. Interact via the tray menu:
+   - **Change Wallpaper** – refresh instantly using the active preset/provider sequence.
+   - **Presets** – switch preset on the fly; the change applies right away.
+   - **Toggle Scheduler** – enable or disable automatic rotation without editing `config.py`.
+   - **Next From Cache** – apply a cached wallpaper (handy when offline).
+   - **Open Cache Folder** – open the cache directory in Explorer.
+   - **Exit** – stop the scheduler, unhook the hotkey, and close the tray icon.
 
-The program will start running and retrieve a random wallpaper from the Wallhaven API. It will then download and set the downloaded image as your desktop wallpaper.
+3. Hotkey trigger: press `ctrl+alt+w` (or your custom `KeyBind`) to refresh immediately from anywhere.
 
-2. Manually change wallpaper: If you want to manually change the wallpaper, press the key combination defined in the `KeyBind` variable in the `config.py` file. The program will immediately fetch and set a new wallpaper based on the search query.
+4. Scheduler: if enabled, wallpapers change automatically at the configured interval outside quiet hours/days. You can pause/resume via the tray menu.
 
-3. Terminate the program: To stop the program, press `Ctrl+C` in the terminal or command prompt where the program is running.
+5. Shutdown: double-click `launchers/stop_wallpaper_changer.vbs`, or use the tray’s **Exit** command. (If you started from the terminal, `Ctrl+C` still works.)
 
 ## Notes
 
-- The program uses the Wallhaven API to fetch random wallpapers. Make sure you have a stable internet connection to retrieve the wallpapers successfully.
-- The downloaded wallpaper will be saved as `wallpaper.jpg` in the user's home directory (`C:\Users\<username>` on Windows).
-- The program is designed to work on Windows operating systems.
-
+- Keep a stable internet connection for new wallpapers; cached mode lets you replay previous ones offline.
+- Per-monitor wallpapers rely on the Windows 8+ `IDesktopWallpaper` API. If unavailable, the app assembles a panorama across monitors instead.
+- The cache stores original downloads (JPEG/PNG) and converts them on the fly, so you can reuse high-quality images later.
+- Respect Wallhaven and Pexels API usage guidelines/quotas when configuring frequent scheduler intervals.

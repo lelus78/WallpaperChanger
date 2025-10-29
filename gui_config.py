@@ -112,6 +112,11 @@ class WallpaperConfigGUI:
         self.notebook.add(self.cache_frame, text="🖼️ Wallpaper Gallery")
         self._create_cache_tab()
 
+        # Tab 3: Advanced Parameters
+        self.advanced_frame = ttk.Frame(self.notebook)
+        self.notebook.add(self.advanced_frame, text="🔧 Advanced")
+        self._create_advanced_tab()
+
         # Bottom buttons
         button_frame = ttk.Frame(self.root)
         button_frame.pack(fill=tk.X, padx=10, pady=5)
@@ -262,6 +267,123 @@ class WallpaperConfigGUI:
         # Load gallery
         self._refresh_gallery()
 
+    def _create_advanced_tab(self) -> None:
+        """Create advanced parameters tab content"""
+        # Create canvas with scrollbar
+        canvas = tk.Canvas(self.advanced_frame)
+        scrollbar = ttk.Scrollbar(self.advanced_frame, orient="vertical", command=canvas.yview)
+        scrollable_frame = ttk.Frame(canvas)
+
+        scrollable_frame.bind(
+            "<Configure>",
+            lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
+        )
+
+        canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
+        canvas.configure(yscrollcommand=scrollbar.set)
+
+        canvas.pack(side="left", fill="both", expand=True)
+        scrollbar.pack(side="right", fill="y")
+
+        # Presets Section
+        presets_group = ttk.LabelFrame(scrollable_frame, text="Presets Configuration", padding=10)
+        presets_group.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
+
+        ttk.Label(presets_group, text="View and manage your wallpaper presets:",
+                 font=("Arial", 10)).pack(anchor=tk.W, pady=5)
+
+        # Presets display area
+        presets_text = scrolledtext.ScrolledText(presets_group, height=12, width=80, wrap=tk.WORD)
+        presets_text.pack(fill=tk.BOTH, expand=True, pady=5)
+
+        # Load presets info
+        try:
+            from preset_manager import PresetManager
+            preset_mgr = PresetManager()
+            presets_info = "CONFIGURED PRESETS:\n" + "=" * 80 + "\n\n"
+
+            for preset in preset_mgr.list_presets():
+                presets_info += f"📌 {preset.title} ({preset.name})\n"
+                presets_info += f"   Description: {preset.description}\n"
+                presets_info += f"   Providers: {', '.join(preset.providers) if preset.providers else 'Default'}\n"
+                presets_info += f"   Queries: {', '.join(preset.queries)}\n"
+                if preset.exclude:
+                    presets_info += f"   Exclude: {', '.join(preset.exclude)}\n"
+                if preset.colors:
+                    presets_info += f"   Colors: {', '.join(preset.colors)}\n"
+                if preset.ratios:
+                    presets_info += f"   Ratios: {', '.join(preset.ratios)}\n"
+                presets_info += f"   Purity: {preset.purity}\n"
+                presets_info += f"   Resolution: {preset.screen_resolution}\n"
+                presets_info += "\n"
+
+            presets_text.insert("1.0", presets_info)
+            presets_text.config(state=tk.DISABLED)
+        except Exception as e:
+            presets_text.insert("1.0", f"Error loading presets: {e}")
+            presets_text.config(state=tk.DISABLED)
+
+        ttk.Label(presets_group, text="To edit presets, modify the 'Presets' list in config.py",
+                 font=("Arial", 9), foreground="gray").pack(anchor=tk.W, pady=2)
+
+        # Monitors Section
+        monitors_group = ttk.LabelFrame(scrollable_frame, text="Monitor Overrides", padding=10)
+        monitors_group.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
+
+        ttk.Label(monitors_group, text="Per-monitor configuration overrides:",
+                 font=("Arial", 10)).pack(anchor=tk.W, pady=5)
+
+        # Monitors display area
+        monitors_text = scrolledtext.ScrolledText(monitors_group, height=12, width=80, wrap=tk.WORD)
+        monitors_text.pack(fill=tk.BOTH, expand=True, pady=5)
+
+        # Load monitors info
+        try:
+            with open(self.config_path, "r", encoding="utf-8") as f:
+                content = f.read()
+
+            # Extract Monitors configuration
+            monitors_info = "MONITOR OVERRIDES:\n" + "=" * 80 + "\n\n"
+
+            if "Monitors = [" in content:
+                # Simple extraction (this is a basic parser, a real one would use ast)
+                monitors_info += "Monitor configurations found in config.py:\n\n"
+                monitors_info += "To view or edit monitor overrides, check the 'Monitors' list in config.py\n\n"
+                monitors_info += "Each monitor can have:\n"
+                monitors_info += "  - name: Display name\n"
+                monitors_info += "  - preset: Preset to use for this monitor\n"
+                monitors_info += "  - provider: Override provider (wallhaven/pexels)\n"
+                monitors_info += "  - query: Custom search query\n"
+                monitors_info += "  - screen_resolution: Minimum resolution\n"
+                monitors_info += "  - purity: Purity level (100/110/111)\n"
+                monitors_info += "  - wallhaven_sorting: Sorting method\n"
+                monitors_info += "  - wallhaven_top_range: Top range period\n"
+            else:
+                monitors_info += "No monitor overrides configured.\n\n"
+                monitors_info += "Monitor overrides allow you to set different wallpapers for each screen.\n"
+
+            monitors_text.insert("1.0", monitors_info)
+            monitors_text.config(state=tk.DISABLED)
+        except Exception as e:
+            monitors_text.insert("1.0", f"Error loading monitor configuration: {e}")
+            monitors_text.config(state=tk.DISABLED)
+
+        ttk.Label(monitors_group, text="To edit monitor overrides, modify the 'Monitors' list in config.py",
+                 font=("Arial", 9), foreground="gray").pack(anchor=tk.W, pady=2)
+
+        # Provider Sequence Section
+        sequence_group = ttk.LabelFrame(scrollable_frame, text="Provider Rotation", padding=10)
+        sequence_group.pack(fill=tk.X, padx=10, pady=5)
+
+        ttk.Label(sequence_group, text="Provider Sequence:").grid(row=0, column=0, sticky=tk.W, pady=2)
+        providers_list = self.config_data.get("ProvidersSequence", ["wallhaven", "pexels"])
+        providers_display = ", ".join(providers_list) if providers_list else "Not configured"
+        ttk.Label(sequence_group, text=providers_display, font=("Arial", 10, "bold"),
+                 foreground="#0066cc").grid(row=0, column=1, sticky=tk.W, padx=10)
+
+        ttk.Label(sequence_group, text="Providers will rotate in this order on each wallpaper change.",
+                 font=("Arial", 9), foreground="gray").grid(row=1, column=0, columnspan=2, sticky=tk.W, pady=2)
+
     def _load_monitors(self) -> None:
         """Load available monitors"""
         from main import enumerate_monitors_user32, DesktopWallpaperController
@@ -341,6 +463,7 @@ class WallpaperConfigGUI:
 
             # Load and resize image
             img = Image.open(image_path)
+            original_size = img.size  # Store original resolution
             img.thumbnail((250, 150), Image.Resampling.LANCZOS if hasattr(Image, 'Resampling') else Image.LANCZOS)
             photo = ImageTk.PhotoImage(img)
 
@@ -349,9 +472,14 @@ class WallpaperConfigGUI:
             img_label.image = photo  # Keep reference
             img_label.pack(padx=5, pady=5)
 
+            # Resolution label
+            resolution_text = f"{original_size[0]}x{original_size[1]}"
+            ttk.Label(frame, text=resolution_text, font=("Arial", 9, "bold"),
+                     foreground="#0066cc").pack()
+
             # Info label
             info_text = entry.get("source_info", "Unknown")[:40]
-            ttk.Label(frame, text=info_text, wraplength=230).pack()
+            ttk.Label(frame, text=info_text, wraplength=230, font=("Arial", 8)).pack(pady=2)
 
             # Apply button
             apply_btn = ttk.Button(frame, text="Apply to Selected Monitor",

@@ -421,6 +421,7 @@ class WallpaperConfigGUI:
                 "SchedulerJitter": self._extract_dict_value(content, "SchedulerSettings", "jitter_minutes"),
                 "CacheMaxItems": self._extract_dict_value(content, "CacheSettings", "max_items"),
                 "CacheOfflineRotation": self._extract_dict_value(content, "CacheSettings", "enable_offline_rotation"),
+                "Monitors": self._extract_monitors(content),
             }
         except Exception as e:
             messagebox.showerror("Error", f"Failed to load config: {e}")
@@ -462,6 +463,41 @@ class WallpaperConfigGUI:
                     except ValueError:
                         return value.strip('"\'')
         return None
+
+    def _extract_monitors(self, content: str) -> List[Dict]:
+        """Extract Monitors list from config"""
+        try:
+            import re
+            # Find the Monitors section
+            monitors_match = re.search(r'Monitors\s*=\s*\[(.*?)\]', content, re.DOTALL)
+            if not monitors_match:
+                return []
+
+            monitors_str = monitors_match.group(1)
+            monitors = []
+
+            # Split by dictionary entries
+            dict_pattern = r'\{([^}]+)\}'
+            for dict_match in re.finditer(dict_pattern, monitors_str):
+                dict_content = dict_match.group(1)
+                monitor = {}
+
+                # Extract key-value pairs
+                for line in dict_content.split('\n'):
+                    if ':' in line:
+                        key_val = line.split(':', 1)
+                        if len(key_val) == 2:
+                            key = key_val[0].strip().strip('"\'')
+                            val = key_val[1].strip().rstrip(',').strip('"\'')
+                            monitor[key] = val
+
+                if monitor:
+                    monitors.append(monitor)
+
+            return monitors
+        except Exception as e:
+            print(f"Error extracting monitors: {e}")
+            return []
 
     def _create_widgets(self) -> None:
         """Create GUI widgets"""
@@ -639,6 +675,65 @@ class WallpaperConfigGUI:
         ttk.Checkbutton(cache_group, text="Enable Offline Rotation",
                        variable=self.cache_offline_var).grid(row=1, column=0, columnspan=2, sticky=tk.W, pady=2)
 
+        # Monitor Resolution Settings
+        monitors_group = ttk.LabelFrame(scrollable_frame, text="🖥️ Monitor Resolution Settings", padding=10)
+        monitors_group.pack(fill=tk.X, padx=10, pady=5)
+
+        # Detect active monitors
+        from main import enumerate_monitors_user32, DesktopWallpaperController
+
+        monitors = []
+        try:
+            manager = DesktopWallpaperController()
+            monitors = manager.enumerate_monitors()
+            manager.close()
+        except Exception:
+            try:
+                monitors = enumerate_monitors_user32()
+            except Exception:
+                pass
+
+        if not monitors:
+            ttk.Label(monitors_group, text="No monitors detected. Connect monitors and restart the app.",
+                     foreground="gray").grid(row=0, column=0, columnspan=3, pady=5)
+        else:
+            ttk.Label(monitors_group,
+                     text="Set minimum resolution for each active monitor:",
+                     font=('Segoe UI', 9, 'bold')).grid(row=0, column=0, columnspan=3, sticky=tk.W, pady=(0, 10))
+
+            self.monitor_resolution_vars = {}
+
+            # Load monitor settings from config
+            monitors_config = self.config_data.get("Monitors", [])
+
+            for idx, monitor in enumerate(monitors):
+                current_res = f"{monitor.get('width')}x{monitor.get('height')}"
+                monitor_name = f"Monitor {idx + 1}"
+
+                # Try to get saved resolution from config
+                saved_res = current_res
+                if idx < len(monitors_config):
+                    saved_res = monitors_config[idx].get("screen_resolution", current_res)
+
+                # Label
+                ttk.Label(monitors_group,
+                         text=f"{monitor_name} (Current: {current_res}):").grid(row=idx+1, column=0, sticky=tk.W, pady=3, padx=5)
+
+                # Resolution dropdown
+                res_var = tk.StringVar(value=saved_res)
+                self.monitor_resolution_vars[idx] = res_var
+
+                res_combo = ttk.Combobox(monitors_group, textvariable=res_var,
+                                        values=["1920x1080", "2560x1440", "3440x1440", "3840x2160", "5120x1440", current_res],
+                                        width=20)
+                res_combo.grid(row=idx+1, column=1, pady=3, padx=5)
+
+                # Info label
+                ttk.Label(monitors_group,
+                         text="(Min resolution for wallpapers)",
+                         foreground="gray",
+                         font=('Segoe UI', 8)).grid(row=idx+1, column=2, sticky=tk.W, pady=3, padx=5)
+
         # Hotkey Settings
         hotkey_group = ttk.LabelFrame(scrollable_frame, text="Hotkey Settings", padding=10)
         hotkey_group.pack(fill=tk.X, padx=10, pady=5)
@@ -710,6 +805,9 @@ class WallpaperConfigGUI:
 
         # Enable mouse wheel scrolling
         self._bind_mousewheel(self.gallery_canvas)
+
+        # Bind window resize to re-layout thumbnails
+        self.gallery_canvas.bind("<Configure>", self._on_gallery_resize)
 
         # Load monitors
         self._load_monitors()
@@ -1092,14 +1190,46 @@ PEXELS_API_KEY={pexels_key}
                              font=("Arial", 9), foreground="orange").pack(pady=5)
             return
 
+        # Store entries for responsive layout
+        self.cached_entries = entries[:30]  # Show last 30
+
+        # Calculate responsive columns based on window width
+        self._layout_thumbnails()
+
+    def _on_gallery_resize(self, event) -> None:
+        """Handle gallery canvas resize to re-layout thumbnails"""
+        if hasattr(self, 'cached_entries') and hasattr(self, '_resize_after_id'):
+            # Cancel previous scheduled re-layout
+            self.root.after_cancel(self._resize_after_id)
+
+        # Schedule re-layout after 200ms to avoid excessive updates
+        self._resize_after_id = self.root.after(200, self._layout_thumbnails)
+
+    def _layout_thumbnails(self) -> None:
+        """Layout thumbnails in a responsive grid based on canvas width"""
+        if not hasattr(self, 'cached_entries') or not self.cached_entries:
+            return
+
+        # Clear existing thumbnails
+        for widget in self.gallery_frame.winfo_children():
+            widget.destroy()
+
+        # Calculate number of columns based on canvas width
+        # Each thumbnail card is ~270px wide (250px + 20px padding)
+        canvas_width = self.gallery_canvas.winfo_width()
+        if canvas_width < 100:  # Canvas not yet sized
+            canvas_width = 1000  # Default width
+
+        card_width = 270
+        max_cols = max(1, canvas_width // card_width)
+
+        print(f"Gallery width: {canvas_width}px, Columns: {max_cols}")
+
         # Create grid of thumbnails
         row = 0
         col = 0
-        max_cols = 3
 
-        print(f"Loading {len(entries)} wallpapers from cache...")
-        for idx, entry in enumerate(entries[:30]):  # Show last 30
-            print(f"Entry {idx}: {entry.get('path', 'NO PATH')}")
+        for idx, entry in enumerate(self.cached_entries):
             self._create_thumbnail(entry, row, col)
             col += 1
             if col >= max_cols:
@@ -1427,6 +1557,9 @@ PEXELS_API_KEY={pexels_key}
 
             # Update values
             new_lines = []
+            in_monitors_section = False
+            monitor_entry_counter = -1
+
             for line in lines:
                 # Simple replacements
                 if line.strip().startswith("Provider ="):
@@ -1463,6 +1596,25 @@ PEXELS_API_KEY={pexels_key}
                 elif line.strip().startswith("DefaultPreset ="):
                     default_preset = self.default_preset_var.get() if hasattr(self, 'default_preset_var') else "workspace"
                     new_lines.append(f'DefaultPreset = "{default_preset}"\n')
+                # Monitor resolution updates
+                elif line.strip().startswith("Monitors = ["):
+                    in_monitors_section = True
+                    monitor_entry_counter = -1
+                    new_lines.append(line)
+                elif in_monitors_section and line.strip() == "{":
+                    monitor_entry_counter += 1
+                    new_lines.append(line)
+                elif in_monitors_section and '"screen_resolution":' in line and hasattr(self, 'monitor_resolution_vars'):
+                    # Update resolution for this monitor
+                    if monitor_entry_counter in self.monitor_resolution_vars:
+                        resolution = self.monitor_resolution_vars[monitor_entry_counter].get()
+                        indent = line[:len(line) - len(line.lstrip())]
+                        new_lines.append(f'{indent}"screen_resolution": "{resolution}",\n')
+                    else:
+                        new_lines.append(line)
+                elif in_monitors_section and line.strip() == "]":
+                    in_monitors_section = False
+                    new_lines.append(line)
                 else:
                     new_lines.append(line)
 

@@ -802,6 +802,17 @@ class WallpaperApp:
                 f"topRange={settings.get('top_range')}, query={task['query']})."
             )
 
+        # Filter for landscape orientation if ratios specified (width >= height)
+        ratios = settings.get("ratios", "")
+        if ratios and ("16x9" in ratios or "21x9" in ratios or "16x10" in ratios):
+            landscape_wallpapers = [
+                w for w in wallpapers
+                if w.get("dimension_x", 0) >= w.get("dimension_y", 0)
+            ]
+            if landscape_wallpapers:
+                wallpapers = landscape_wallpapers
+                self.logger.info(f"Filtered {len(wallpapers)} landscape wallpapers from Wallhaven")
+
         choice = random.choice(wallpapers)
         meta = [sorting]
         if params.get("topRange"):
@@ -843,6 +854,15 @@ class WallpaperApp:
         photos = data.get("photos", [])
         if not photos:
             raise RuntimeError("No photos returned from Pexels with the current configuration.")
+
+        # Filter for landscape orientation (width >= height)
+        # This is important because curated mode doesn't support orientation parameter
+        desired_orientation = filters.get("orientation", "landscape")
+        if desired_orientation == "landscape":
+            landscape_photos = [p for p in photos if p.get("width", 0) >= p.get("height", 0)]
+            if landscape_photos:
+                photos = landscape_photos
+                self.logger.info(f"Filtered {len(photos)} landscape photos from {len(data.get('photos', []))} total")
 
         choice = random.choice(photos)
         src = choice.get("src", {})

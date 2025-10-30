@@ -236,35 +236,29 @@ class WallpaperConfigGUI:
         pid_path = Path(__file__).parent / "wallpaperchanger.pid"
 
         if not pid_path.exists():
-            # Ask user if they want to start the main app
-            result = messagebox.askyesno(
-                "Start Wallpaper Changer?",
-                "The Wallpaper Changer service is not running.\n\n"
-                "Would you like to start it now?\n\n"
-                "(The service is required for automatic wallpaper changes)"
-            )
-
-            if result:
-                try:
-                    # Start the main app in background
-                    main_script = Path(__file__).parent / "main.py"
-                    subprocess.Popen(
-                        ["pythonw", str(main_script)],
-                        creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0
-                    )
-                    messagebox.showinfo(
-                        "Service Started",
-                        "Wallpaper Changer service started successfully!\n\n"
-                        "The service is now running in the background."
-                    )
-                except Exception as e:
-                    messagebox.showerror(
-                        "Error",
-                        f"Failed to start Wallpaper Changer service:\n{e}\n\n"
-                        "Please start it manually using:\n"
-                        "• launchers/start_wallpaper_changer.vbs\n"
-                        "• or 'python main.py'"
-                    )
+            # Automatically start the service without asking
+            try:
+                # Start the main app in background
+                main_script = Path(__file__).parent / "main.py"
+                subprocess.Popen(
+                    ["pythonw", str(main_script)],
+                    creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0
+                )
+                print("Wallpaper Changer service started automatically")
+                # Mark that we started the service
+                self.service_started_by_gui = True
+            except Exception as e:
+                messagebox.showerror(
+                    "Error",
+                    f"Failed to start Wallpaper Changer service:\n{e}\n\n"
+                    "Please start it manually using:\n"
+                    "• launchers/start_wallpaper_changer.vbs\n"
+                    "• or 'python main.py'"
+                )
+                self.service_started_by_gui = False
+        else:
+            # Service was already running
+            self.service_started_by_gui = False
 
     def _check_app_status(self) -> bool:
         """Check if main app is running"""
@@ -332,6 +326,78 @@ class WallpaperConfigGUI:
                 self.root.after(1000, self._update_status_indicator)
             except Exception as e:
                 messagebox.showerror("Error", f"Failed to start service: {e}")
+
+    def _on_closing(self) -> None:
+        """Handle GUI closing - stop service if we started it"""
+        if hasattr(self, 'service_started_by_gui') and self.service_started_by_gui:
+            # We started the service, so stop it when closing
+            try:
+                pid_path = Path(__file__).parent / "wallpaperchanger.pid"
+                if pid_path.exists():
+                    with open(pid_path, 'r') as f:
+                        pid = int(f.read().strip())
+
+                    # Kill the process
+                    import subprocess
+                    if os.name == 'nt':
+                        subprocess.run(['taskkill', '/F', '/PID', str(pid)], capture_output=True)
+                    else:
+                        os.kill(pid, 9)
+
+                    print("Wallpaper Changer service stopped")
+            except Exception as e:
+                print(f"Error stopping service: {e}")
+
+        # Close the GUI
+        self.root.quit()
+        self.root.destroy()
+
+    def _minimize_to_tray(self) -> None:
+        """Minimize GUI to system tray"""
+        try:
+            import pystray
+            from PIL import Image, ImageDraw
+
+            # Hide the main window
+            self.root.withdraw()
+
+            # Create tray icon
+            def create_icon():
+                image = Image.new('RGB', (64, 64), color=(137, 180, 250))
+                draw = ImageDraw.Draw(image)
+                draw.rectangle([10, 10, 54, 54], fill=(30, 30, 46))
+                draw.text((20, 20), "WC", fill=(137, 180, 250))
+                return image
+
+            def on_show(icon, item):
+                icon.stop()
+                self.root.deiconify()
+
+            def on_quit(icon, item):
+                icon.stop()
+                self.root.deiconify()
+                self._on_closing()
+
+            icon = pystray.Icon(
+                "Wallpaper Config",
+                create_icon(),
+                "Wallpaper Changer Config",
+                menu=pystray.Menu(
+                    pystray.MenuItem("Show", on_show, default=True),
+                    pystray.MenuItem("Quit", on_quit)
+                )
+            )
+
+            icon.run()
+
+        except ImportError:
+            messagebox.showwarning(
+                "Feature Not Available",
+                "Minimize to tray requires 'pystray' module.\n\n"
+                "Install it with: pip install pystray"
+            )
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to minimize to tray: {e}")
 
     def _load_config(self) -> None:
         """Load current configuration from config.py"""
@@ -464,7 +530,11 @@ class WallpaperConfigGUI:
 
         ttk.Button(button_frame, text="💾 Save Configuration", command=self._save_config).pack(side=tk.LEFT, padx=5)
         ttk.Button(button_frame, text="🔄 Reload Config", command=self._reload_config).pack(side=tk.LEFT, padx=5)
-        ttk.Button(button_frame, text="❌ Close", command=self.root.quit).pack(side=tk.RIGHT, padx=5)
+        ttk.Button(button_frame, text="📥 Minimize to Tray", command=self._minimize_to_tray).pack(side=tk.RIGHT, padx=5)
+        ttk.Button(button_frame, text="❌ Close", command=self._on_closing).pack(side=tk.RIGHT, padx=5)
+
+        # Handle window close button (X)
+        self.root.protocol("WM_DELETE_WINDOW", self._on_closing)
 
     def _create_settings_tab(self) -> None:
         """Create settings tab content"""

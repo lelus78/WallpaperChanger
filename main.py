@@ -1,5 +1,6 @@
 import atexit
 import ctypes
+import html
 import json
 import logging
 import os
@@ -9,7 +10,7 @@ import time
 import uuid
 from contextlib import suppress
 from datetime import datetime
-from typing import Callable, Dict, List, Literal, Optional, Tuple
+from typing import Any, Callable, Dict, List, Literal, Optional, Tuple
 
 import keyboard
 import requests
@@ -43,13 +44,17 @@ SPAN_BMP_NAME = "wallpaper_span.bmp"
 REQUEST_TIMEOUT = 30
 PROVIDER_WALLHAVEN = "wallhaven"
 PROVIDER_PEXELS = "pexels"
-SUPPORTED_PROVIDERS = {PROVIDER_WALLHAVEN, PROVIDER_PEXELS}
+PROVIDER_REDDIT = "reddit"
+SUPPORTED_PROVIDERS = {PROVIDER_WALLHAVEN, PROVIDER_PEXELS, PROVIDER_REDDIT}
 PEXELS_SEARCH_URL = "https://api.pexels.com/v1/search"
 PEXELS_CURATED_URL = "https://api.pexels.com/v1/curated"
 PEXELS_PER_PAGE = 40
 PEXELS_MAX_PAGE = 20
 PEXELS_MODE_SEARCH = "search"
 PEXELS_MODE_CURATED = "curated"
+REDDIT_IMAGE_EXTENSIONS = (".jpg", ".jpeg", ".png", ".bmp", ".webp")
+REDDIT_SORT_OPTIONS = {"hot", "new", "rising", "top", "controversial"}
+REDDIT_TIME_FILTERS = {"hour", "day", "week", "month", "year", "all"}
 CLSID_DESKTOP_WALLPAPER = uuid.UUID("{C2CF3110-460E-4FC1-B9D0-8A1C0C9CC4BD}")
 IID_IDESKTOP_WALLPAPER = uuid.UUID("{B92B56A9-8B55-4E14-9A89-0199BBB6F93B}")
 CLSCTX_ALL = 23
@@ -278,7 +283,7 @@ def ensure_provider(name: str) -> str:
     normalized = name.lower()
     if normalized not in SUPPORTED_PROVIDERS:
         raise RuntimeError(
-            f"Unsupported provider '{name}'. Use '{PROVIDER_WALLHAVEN}' or '{PROVIDER_PEXELS}'."
+            f"Unsupported provider '{name}'. Use one of: {', '.join(sorted(SUPPORTED_PROVIDERS))}."
         )
     return normalized
 
@@ -844,6 +849,7 @@ class WallpaperApp:
                 "query": query,
                 "wallhaven": wallhaven_settings,
                 "pexels": monitor_preset.get_pexels_settings(),
+                "reddit": monitor_preset.get_reddit_settings(),
                 "target_size": (monitor.get("width"), monitor.get("height"))
                 if monitor
                 else self._get_primary_size(),
@@ -873,6 +879,7 @@ class WallpaperApp:
                     "query": preset.build_query(None),
                     "wallhaven": preset.get_wallhaven_settings(),
                     "pexels": preset.get_pexels_settings(),
+                    "reddit": preset.get_reddit_settings(),
                     "target_size": self._get_primary_size(),
                 }
             )
@@ -982,6 +989,8 @@ class WallpaperApp:
             url, source_info = self._fetch_wallhaven(task)
         elif provider == PROVIDER_PEXELS:
             url, source_info = self._fetch_pexels(task)
+        elif provider == PROVIDER_REDDIT:
+            url, source_info = self._fetch_reddit(task)
         else:
             raise RuntimeError(f"Unsupported provider '{provider}'")
 
@@ -1103,6 +1112,152 @@ class WallpaperApp:
                 " -> ".join(chosen_notes),
             )
         return choice["path"], source_info
+
+    def _fetch_reddit(self, task: Dict) -> Tuple[str, str]:
+        settings = dict(task.get("reddit") or {})
+        defaults = {
+            "subreddits": ["wallpapers"],
+            "sort": "hot",
+            "time_filter": "day",
+            "limit": 60,
+            "min_score": 0,
+            "allow_nsfw": False,
+            "user_agent": "WallpaperChanger/1.0 (+https://github.com/EmanueleO/WallpaperChanger)",
+        }
+        for key, value in defaults.items():
+            settings.setdefault(key, value)
+
+        subreddits = settings.get("subreddits") or ["wallpapers"]
+        if isinstance(subreddits, str):
+            subreddits = [item.strip() for item in subreddits.split(",") if item.strip()]
+        if not isinstance(subreddits, list) or not subreddits:
+            subreddits = ["wallpapers"]
+
+        sort = str(settings.get("sort") or "hot").lower()
+        if sort not in REDDIT_SORT_OPTIONS:
+            sort = "hot"
+
+        time_filter = str(settings.get("time_filter") or "day").lower()
+        if time_filter not in REDDIT_TIME_FILTERS:
+            time_filter = "day"
+
+        try:
+            limit = int(settings.get("limit", 60))
+        except (TypeError, ValueError):
+            limit = 60
+        limit = max(10, min(limit, 100))
+
+        try:
+            min_score = int(settings.get("min_score", 0))
+        except (TypeError, ValueError):
+            min_score = 0
+
+        allow_nsfw_value = settings.get("allow_nsfw", False)
+        if isinstance(allow_nsfw_value, str):
+            allow_nsfw = allow_nsfw_value.strip().lower() in {"1", "true", "yes", "on"}
+        else:
+            allow_nsfw = bool(allow_nsfw_value)
+
+        user_agent = str(settings.get("user_agent") or defaults["user_agent"])
+        headers = {"User-Agent": user_agent}
+
+        preferred: List[Dict[str, Any]] = []
+        secondary: List[Dict[str, Any]] = []
+        errors: List[str] = []
+
+        def extract_image(post: Dict[str, Any]) -> Optional[str]:
+            preview = post.get("preview", {}).get("images", [])
+            if preview:
+                source = preview[0].get("source", {})
+                source_url = source.get("url")
+                if source_url:
+                    return html.unescape(source_url)
+            url = post.get("url_overridden_by_dest") or post.get("url")
+            if not url:
+                return None
+            lowered = url.lower()
+            if lowered.endswith(REDDIT_IMAGE_EXTENSIONS) or "i.redd.it" in lowered or "i.imgur.com" in lowered:
+                return html.unescape(url)
+            return None
+
+        subreddit_cycle = list(dict.fromkeys(subreddits))
+        random.shuffle(subreddit_cycle)
+
+        for subreddit in subreddit_cycle:
+            params = {"limit": limit}
+            if sort in {"top", "controversial"}:
+                params["t"] = time_filter
+            url = f"https://www.reddit.com/r/{subreddit}/{sort}.json"
+            try:
+                response = requests.get(url, headers=headers, params=params, timeout=REQUEST_TIMEOUT)
+            except requests.RequestException as error:
+                errors.append(f"{subreddit}:{error}")
+                continue
+
+            if response.status_code == 429:
+                raise RuntimeError(
+                    "Reddit rate limit reached. Update RedditSettings['user_agent'] or increase rotation interval."
+                )
+
+            try:
+                response.raise_for_status()
+                payload = response.json()
+            except (requests.RequestException, ValueError) as error:
+                errors.append(f"{subreddit}:{error}")
+                continue
+
+            posts = payload.get("data", {}).get("children", [])
+            if not posts:
+                continue
+
+            for child in posts:
+                post = child.get("data") or {}
+                if not post or post.get("stickied"):
+                    continue
+                if not allow_nsfw and post.get("over_18"):
+                    continue
+                image_url = extract_image(post)
+                if not image_url:
+                    continue
+                score = post.get("score") or post.get("ups") or 0
+                candidate = {
+                    "url": image_url,
+                    "score": int(score or 0),
+                    "subreddit": subreddit,
+                    "permalink": post.get("permalink"),
+                    "title": post.get("title") or "Untitled",
+                }
+                if candidate["score"] >= min_score:
+                    preferred.append(candidate)
+                else:
+                    secondary.append(candidate)
+
+        if not preferred and not secondary:
+            if errors:
+                self.logger.warning("Reddit fetch errors: %s", "; ".join(errors[:5]))
+            raise RuntimeError(
+                f"Failed to retrieve a wallpaper from Reddit (subreddits={subreddits}, sort={sort}, "
+                f"min_score={min_score})."
+            )
+
+        if preferred:
+            choice = random.choice(preferred)
+            note = ""
+        else:
+            choice = random.choice(secondary)
+            note = " (below min_score fallback)"
+
+        permalink = choice.get("permalink") or ""
+        permalink_url = f"https://reddit.com{permalink}" if permalink else ""
+        title = choice.get("title", "Untitled")
+        subreddit = choice.get("subreddit", "unknown")
+        source_info = f"Reddit r/{subreddit} ({sort}{'/' + time_filter if sort in {'top', 'controversial'} else ''}) | {title}"
+        if permalink_url:
+            source_info += f" ({permalink_url})"
+        if note:
+            source_info += note
+
+        return choice["url"], source_info
 
     def _fetch_pexels(self, task: Dict) -> Tuple[str, str]:
         if not normalize_string(PexelsApiKey):

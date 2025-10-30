@@ -7,10 +7,10 @@ env_path = Path(__file__).parent / '.env'
 load_dotenv(dotenv_path=env_path)
 
 # Choose which provider to use: "wallhaven" or "pexels"
-Provider = "wallhaven"
+Provider = "reddit"
 
 # Optional ordered list of providers to rotate through across updates
-ProvidersSequence = ["wallhaven", "pexels"]
+ProvidersSequence = ["wallhaven", "pexels", "reddit"]
 
 # Enable or disable provider rotation
 RotateProviders = True
@@ -25,6 +25,17 @@ PexelsApiKey = os.getenv("PEXELS_API_KEY", "")
 
 # Choose how to fetch wallpapers from Pexels: "search" or "curated"
 PexelsMode = "curated"
+
+# Reddit settings for public JSON API access (no authentication required)
+RedditSettings = {
+    "user_agent": "WallpaperChanger/1.0 (by u/lelus78)",
+    "subreddits": ["wallpapers", "wallpaper"],
+    "sort": "hot",
+    "time_filter": "day",
+    "limit": 60,
+    "min_score": 50,
+    "allow_nsfw": False,
+}
 
 # Enter a search query/tag here to fetch wallpapers from
 Query = "nature"
@@ -44,7 +55,7 @@ WallhavenTopRange = "1M"
 
 # Cache settings: directory (blank for default), max_items (int), enable_offline_rotation (bool)
 CacheSettings = {
-    "directory": "",
+    "directory": r"C:\Users\EmanueleO\WallpaperChangerCache",
     "max_items": 60,
     "enable_offline_rotation": True,
 }
@@ -67,7 +78,7 @@ Presets = [
         "name": "workspace",
         "title": "Workspace Focus",
         "description": "Clean and minimal wallpapers for productivity.",
-        "providers": ["wallhaven", "pexels"],
+        "providers": ["wallhaven", "pexels", "reddit"],
         "queries": ["technology"],
         "exclude": [],
         "colors": ["2b4450"],
@@ -83,12 +94,18 @@ Presets = [
             "orientation": "landscape",
             "size": "large2x",
         },
+        "reddit": {
+            "subreddits": ["wallpapers", "ultrahdwallpapers"],
+            "sort": "hot",
+            "time_filter": "day",
+            "min_score": 80,
+        },
     },
     {
         "name": "relax",
         "title": "Relaxing Nature",
         "description": "Calming landscapes for breaks.",
-        "providers": ["wallhaven", "pexels"],
+        "providers": ["wallhaven", "pexels", "reddit"],
         "queries": ["nature", "landscape"],
         "exclude": ["city", "crowd"],
         "colors": ["004e92", "263238"],
@@ -101,6 +118,12 @@ Presets = [
         },
         "pexels": {
             "orientation": "landscape",
+        },
+        "reddit": {
+            "subreddits": ["EarthPorn", "wallpaper", "NatureIsFuckingLit"],
+            "sort": "top",
+            "time_filter": "week",
+            "min_score": 200,
         },
     },
 ]

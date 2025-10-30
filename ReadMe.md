@@ -1,12 +1,12 @@
 # Wallpaper Changer
 
-The **Wallpaper Changer** is a Python program that automatically refreshes your desktop wallpaper using random images from configurable providers (Wallhaven or Pexels). It now bundles a Windows tray companion, scheduling, caching, presets, and one-click launchers so you can tailor wallpaper rotation to your workflow.
+The **Wallpaper Changer** is a Python program that automatically refreshes your desktop wallpaper using random images from configurable providers (Wallhaven, Pexels, or Reddit). It now bundles a Windows tray companion, scheduling, caching, presets, and one-click launchers so you can tailor wallpaper rotation to your workflow.
 
 ## Features
 
 - **GUI Configuration Tool** with Settings tab and Wallpaper Gallery to easily configure the app and manage cached wallpapers.
 - System tray companion with quick actions (change now, rotate presets, toggle scheduler, play next cached wallpaper, open settings GUI, exit).
-- Configurable presets with include/exclude keywords, colour cues, aspect-ratio filters, and provider-specific options (sorting/toplist on Wallhaven, orientation on Pexels).
+- Configurable presets with include/exclude keywords, colour cues, aspect-ratio filters, and provider-specific options (sorting/toplist on Wallhaven, orientation on Pexels, subreddit/sort/score filters on Reddit).
 - Flexible scheduler with interval, jitter, day filters, and quiet hours to avoid changes while you work or sleep.
 - Local cache with metadata and offline rotation, letting you replay favourite wallpapers even without a connection.
 - **Wallpaper Gallery** in the GUI to browse cached wallpapers and apply them to specific monitors with one click.
@@ -28,6 +28,7 @@ The **Wallpaper Changer** is a Python program that automatically refreshes your 
    - Copy `.env.example` to `.env` and add your API keys
    - **Wallhaven** – visit the [Wallhaven API settings](https://wallhaven.cc/help/api) page and generate a key.
    - **Pexels** – create an account and request a key at [pexels.com/api/new](https://www.pexels.com/api/new/).
+   - **Reddit** - no API key is required, but set a descriptive `user_agent` (ideally referencing your Reddit username) to avoid rate limits.
 
 4. Customize settings:
    - **Easy way**: Launch the GUI (`launchers/start_config_gui.vbs` or `python gui_config.py`)
@@ -37,6 +38,7 @@ The **Wallpaper Changer** is a Python program that automatically refreshes your 
 
 - `Provider` / `ProvidersSequence`: default provider(s) and rotation order.
 - `ApiKey` / `PexelsApiKey` / `PexelsMode`: provider credentials and default mode (`search` or `curated` for Pexels).
+- `RedditSettings`: global defaults for subreddit list, sort/time filters, post limit, minimum score, NSFW toggle, and the user-agent sent to Reddit.
 - `CacheSettings`: cache directory, size cap, and offline rotation toggle.
 - `SchedulerSettings`: enable/disable scheduler, interval, jitter, initial delay, quiet hours, and active days.
 - `Presets`: named preset list defining providers, include/exclude keywords, colours, ratios, and provider-specific options (`wallhaven.sorting`, `wallhaven.top_range`, `pexels.orientation`, etc.).
@@ -96,4 +98,5 @@ Monitors = [
 - Keep a stable internet connection for new wallpapers; cached mode lets you replay previous ones offline.
 - Per-monitor wallpapers rely on the Windows 8+ `IDesktopWallpaper` API. If unavailable, the app assembles a panorama across monitors instead.
 - The cache stores original downloads (JPEG/PNG) and converts them on the fly, so you can reuse high-quality images later.
+- Reddit’s public JSON API is rate-limited; customise `RedditSettings.user_agent`, keep reasonable intervals, and avoid unnecessary refresh storms.
 - Respect Wallhaven and Pexels API usage guidelines/quotas when configuring frequent scheduler intervals.

@@ -1,3 +1,4 @@
+import ast
 import json
 import os
 import tkinter as tk
@@ -553,6 +554,7 @@ class WallpaperConfigGUI:
                 "SchedulerJitter": self._extract_dict_value(content, "SchedulerSettings", "jitter_minutes"),
                 "CacheMaxItems": self._extract_dict_value(content, "CacheSettings", "max_items"),
                 "CacheOfflineRotation": self._extract_dict_value(content, "CacheSettings", "enable_offline_rotation"),
+                "RedditSettings": self._extract_dict_literal(content, "RedditSettings"),
                 "Monitors": self._extract_monitors(content),
             }
         except Exception as e:
@@ -630,6 +632,21 @@ class WallpaperConfigGUI:
         except Exception as e:
             print(f"Error extracting monitors: {e}")
             return []
+
+    def _extract_dict_literal(self, content: str, key: str) -> Dict[str, Any]:
+        """Extract dictionary literal assigned to key using AST parsing."""
+        try:
+            tree = ast.parse(content)
+            for node in tree.body:
+                if isinstance(node, ast.Assign):
+                    for target in node.targets:
+                        if isinstance(target, ast.Name) and target.id == key:
+                            value = ast.literal_eval(node.value)
+                            if isinstance(value, dict):
+                                return value
+        except Exception as exc:
+            print(f"Error extracting {key}: {exc}")
+        return {}
 
     def _create_widgets(self) -> None:
         """Create GUI widgets"""
@@ -738,7 +755,7 @@ class WallpaperConfigGUI:
         ttk.Label(provider_group, text="Default Provider:").grid(row=0, column=0, sticky=tk.W, pady=2)
         self.provider_var = tk.StringVar(value=self.config_data.get("Provider", "wallhaven"))
         ttk.Combobox(provider_group, textvariable=self.provider_var,
-                     values=["wallhaven", "pexels"], width=30).grid(row=0, column=1, pady=2)
+                     values=["wallhaven", "pexels", "reddit"], width=30).grid(row=0, column=1, pady=2)
 
         ttk.Label(provider_group, text="Search Query:").grid(row=1, column=0, sticky=tk.W, pady=2)
         self.query_var = tk.StringVar(value=self.config_data.get("Query", "nature"))
@@ -748,6 +765,25 @@ class WallpaperConfigGUI:
         ttk.Checkbutton(provider_group, text="Enable Provider Rotation",
 
                        variable=self.rotate_providers_var).grid(row=2, column=0, columnspan=2, sticky=tk.W, pady=2)
+
+        reddit_settings = self.config_data.get("RedditSettings", {})
+        subreddits_value = reddit_settings.get("subreddits", ["wallpapers"])
+        if isinstance(subreddits_value, list):
+            subreddits_text = ", ".join(subreddits_value)
+        else:
+            subreddits_text = str(subreddits_value or "wallpapers")
+        self.reddit_subreddits_var = tk.StringVar(value=subreddits_text or "wallpapers")
+        self.reddit_sort_var = tk.StringVar(value=str(reddit_settings.get("sort", "hot")))
+        self.reddit_time_var = tk.StringVar(value=str(reddit_settings.get("time_filter", "day")))
+        self.reddit_limit_var = tk.IntVar(value=int(reddit_settings.get("limit", 60) or 60))
+        self.reddit_score_var = tk.IntVar(value=int(reddit_settings.get("min_score", 0) or 0))
+        allow_nsfw = reddit_settings.get("allow_nsfw", False)
+        if isinstance(allow_nsfw, str):
+            allow_nsfw = allow_nsfw.strip().lower() in {"1", "true", "yes", "on"}
+        self.reddit_nsfw_var = tk.BooleanVar(value=bool(allow_nsfw))
+        self.reddit_user_agent_var = tk.StringVar(
+            value=str(reddit_settings.get("user_agent", "WallpaperChanger/1.0 (by u/yourusername)"))
+        )
 
         # Wallhaven Settings
         wallhaven_group = ttk.LabelFrame(scrollable_frame, text="Wallhaven Settings", padding=10)
@@ -783,6 +819,42 @@ class WallpaperConfigGUI:
         self.pexels_mode_var = tk.StringVar(value=self.config_data.get("PexelsMode", "curated"))
         ttk.Combobox(pexels_group, textvariable=self.pexels_mode_var,
                      values=["search", "curated"], width=30).grid(row=0, column=1, pady=2)
+
+        # Reddit Settings
+        reddit_group = ttk.LabelFrame(scrollable_frame, text="Reddit Settings", padding=10)
+        reddit_group.pack(fill=tk.X, padx=10, pady=5)
+
+        ttk.Label(reddit_group, text="Subreddits (comma separated):").grid(row=0, column=0, sticky=tk.W, pady=2)
+        ttk.Entry(reddit_group, textvariable=self.reddit_subreddits_var, width=33).grid(row=0, column=1, pady=2)
+        ttk.Label(reddit_group, text="(e.g., wallpapers, wallpaper)").grid(row=0, column=2, sticky=tk.W, padx=5)
+
+        ttk.Label(reddit_group, text="Sort:").grid(row=1, column=0, sticky=tk.W, pady=2)
+        ttk.Combobox(reddit_group, textvariable=self.reddit_sort_var,
+                     values=["hot", "new", "rising", "top", "controversial"],
+                     width=30, state="readonly").grid(row=1, column=1, pady=2)
+
+        ttk.Label(reddit_group, text="Time Filter:").grid(row=2, column=0, sticky=tk.W, pady=2)
+        ttk.Combobox(reddit_group, textvariable=self.reddit_time_var,
+                     values=["hour", "day", "week", "month", "year", "all"],
+                     width=30, state="readonly").grid(row=2, column=1, pady=2)
+        ttk.Label(reddit_group, text="(Used for Top/Controversial)").grid(row=2, column=2, sticky=tk.W, padx=5)
+
+        ttk.Label(reddit_group, text="Posts per fetch:").grid(row=3, column=0, sticky=tk.W, pady=2)
+        ttk.Spinbox(reddit_group, from_=10, to=100, textvariable=self.reddit_limit_var, width=31).grid(row=3, column=1, pady=2)
+
+        ttk.Label(reddit_group, text="Minimum upvotes:").grid(row=4, column=0, sticky=tk.W, pady=2)
+        ttk.Spinbox(reddit_group, from_=0, to=100000, increment=10, textvariable=self.reddit_score_var,
+                    width=31).grid(row=4, column=1, pady=2)
+
+        ttk.Checkbutton(reddit_group, text="Include NSFW posts",
+                        variable=self.reddit_nsfw_var).grid(row=5, column=0, columnspan=2, sticky=tk.W, pady=2)
+
+        ttk.Label(reddit_group, text="User Agent:").grid(row=6, column=0, sticky=tk.W, pady=2)
+        ttk.Entry(reddit_group, textvariable=self.reddit_user_agent_var, width=50).grid(row=6, column=1, columnspan=2, pady=2, sticky=tk.W)
+
+        ttk.Label(reddit_group,
+                  text="Reddit requires a descriptive user-agent; consider using your Reddit username.",
+                  foreground="gray").grid(row=7, column=0, columnspan=3, sticky=tk.W, pady=(2, 0))
 
         # Scheduler Settings
         scheduler_group = ttk.LabelFrame(scrollable_frame, text="Scheduler Settings", padding=10)
@@ -1825,6 +1897,7 @@ PEXELS_API_KEY={pexels_key}
             new_lines = []
             in_monitors_section = False
             monitor_entry_counter = -1
+            in_reddit_section = False
 
             for line in lines:
                 # Simple replacements
@@ -1846,6 +1919,36 @@ PEXELS_API_KEY={pexels_key}
                     new_lines.append(f'RotateProviders = {self.rotate_providers_var.get()}\n')
                 elif line.strip().startswith("KeyBind ="):
                     new_lines.append(f'KeyBind = "{self.keybind_var.get()}"\n')
+                elif line.strip().startswith("RedditSettings = {"):
+                    in_reddit_section = True
+                    new_lines.append(line)
+                elif in_reddit_section and '"subreddits":' in line:
+                    subreddits = [s.strip() for s in self.reddit_subreddits_var.get().split(",") if s.strip()]
+                    if not subreddits:
+                        subreddits = ["wallpapers"]
+                    new_lines.append(f'    "subreddits": {json.dumps(subreddits)},\n')
+                elif in_reddit_section and '"sort":' in line:
+                    new_lines.append(f'    "sort": {json.dumps(self.reddit_sort_var.get().strip().lower() or "hot")},\n')
+                elif in_reddit_section and '"time_filter":' in line:
+                    new_lines.append(
+                        f'    "time_filter": {json.dumps(self.reddit_time_var.get().strip().lower() or "day")},\n'
+                    )
+                elif in_reddit_section and '"limit":' in line:
+                    limit_value = max(10, min(100, int(self.reddit_limit_var.get() or 60)))
+                    new_lines.append(f'    "limit": {limit_value},\n')
+                elif in_reddit_section and '"min_score":' in line:
+                    min_score_value = max(0, int(self.reddit_score_var.get() or 0))
+                    new_lines.append(f'    "min_score": {min_score_value},\n')
+                elif in_reddit_section and '"allow_nsfw":' in line:
+                    new_lines.append(f'    "allow_nsfw": {self.reddit_nsfw_var.get()},\n')
+                elif in_reddit_section and '"user_agent":' in line:
+                    user_agent = self.reddit_user_agent_var.get().strip()
+                    if not user_agent:
+                        user_agent = "WallpaperChanger/1.0 (by u/yourusername)"
+                    new_lines.append(f'    "user_agent": {json.dumps(user_agent)},\n')
+                elif in_reddit_section and line.strip().startswith("}"):
+                    in_reddit_section = False
+                    new_lines.append(line)
                 elif '"enabled":' in line and "SchedulerSettings" in "".join(new_lines[-10:]):
                     new_lines.append(f'    "enabled": {self.scheduler_enabled_var.get()},\n')
                 elif '"interval_minutes":' in line:

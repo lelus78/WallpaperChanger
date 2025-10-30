@@ -1,18 +1,18 @@
 {
-  "timestamp": "2025-10-30T16:14:32",
+  "timestamp": "2025-10-30T16:59:00",
   "preset": "workspace",
   "trigger": "scheduler",
   "providers_used": [
-    "pexels"
+    "wallhaven"
   ],
   "results": [
     {
-      "label": "Full HD: Pexels (curated) | Marco Pozzi (https://www.pexels.com/@marco-pozzi-2156102230)",
-      "provider": "pexels"
+      "label": "Full HD: Wallhaven (random, fallback: drop colors) | 1p176w (https://wallhaven.cc/w/1p176w)",
+      "provider": "wallhaven"
     },
     {
-      "label": "Ultrawide: Pexels (curated) | Karina Diniz (https://www.pexels.com/@karina-diniz-1382740)",
-      "provider": "pexels"
+      "label": "Ultrawide: Wallhaven (toplist, fallback: drop colors -> drop topRange -> drop ratios) | 8g5p52 (https://wallhaven.cc/w/8g5p52)",
+      "provider": "wallhaven"
     }
   ],
   "note": "",
@@ -22,9 +22,19 @@
         "wallhaven",
         "pexels"
       ],
-      "next_index": 0,
-      "next_provider": "wallhaven",
+      "next_index": 1,
+      "next_provider": "pexels",
       "length": 2
+    },
+    {
+      "sequence": [
+        "wallhaven",
+        "pexels",
+        "reddit"
+      ],
+      "next_index": 1,
+      "next_provider": "pexels",
+      "length": 3
     }
   ]
 }

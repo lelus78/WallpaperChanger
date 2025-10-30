@@ -1,6 +1,6 @@
 import random
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 from config import (
     DefaultPreset,
@@ -9,6 +9,7 @@ from config import (
     ProvidersSequence,
     Query,
     PurityLevel,
+    RedditSettings,
     ScreenResolution,
     WallhavenSorting,
     WallhavenTopRange,
@@ -35,6 +36,7 @@ class Preset:
     screen_resolution: Optional[str] = None
     wallhaven: Dict[str, str] = field(default_factory=dict)
     pexels: Dict[str, str] = field(default_factory=dict)
+    reddit: Dict[str, Any] = field(default_factory=dict)
 
     def build_query(self, override_query: Optional[str] = None) -> str:
         base = override_query
@@ -73,6 +75,21 @@ class Preset:
         settings = dict(self.pexels)
         if self.colors:
             settings.setdefault("color", self.colors[0])
+        return settings
+
+    def get_reddit_settings(self) -> Dict[str, Any]:
+        settings = dict(RedditSettings)
+        custom = dict(self.reddit)
+        subreddits = custom.get("subreddits")
+        if subreddits:
+            if isinstance(subreddits, list):
+                settings["subreddits"] = [str(item).strip() for item in subreddits if str(item).strip()]
+            elif isinstance(subreddits, str):
+                settings["subreddits"] = [item.strip() for item in subreddits.split(",") if item.strip()]
+        for key, value in custom.items():
+            if key == "subreddits":
+                continue
+            settings[key] = value
         return settings
 
 
@@ -115,6 +132,7 @@ class PresetManager:
                 "sorting": WallhavenSorting,
                 "top_range": WallhavenTopRange,
             },
+            reddit=dict(RedditSettings),
         )
         self.presets[default.name] = default
         self.default_name = default.name
@@ -148,8 +166,37 @@ class PresetManager:
                     for key, value in dict(raw.get("pexels", {})).items()
                     if str(value).strip()
                 },
+                reddit=self._normalize_reddit_settings(raw.get("reddit")),
             )
             self.presets[preset.name] = preset
+
+    def _normalize_reddit_settings(self, raw: Optional[Dict]) -> Dict[str, Any]:
+        if not isinstance(raw, dict):
+            return {}
+        settings: Dict[str, Any] = {}
+        subreddits = raw.get("subreddits")
+        if subreddits:
+            if isinstance(subreddits, list):
+                settings["subreddits"] = [str(item).strip() for item in subreddits if str(item).strip()]
+            elif isinstance(subreddits, str):
+                settings["subreddits"] = [item.strip() for item in subreddits.split(",") if item.strip()]
+        for key, value in raw.items():
+            if key == "subreddits":
+                continue
+            if key in {"allow_nsfw"}:
+                if isinstance(value, bool):
+                    settings[key] = value
+                else:
+                    settings[key] = str(value).strip().lower() == "true"
+                continue
+            if key in {"limit", "min_score"}:
+                try:
+                    settings[key] = int(value)
+                except (TypeError, ValueError):
+                    continue
+                continue
+            settings[key] = str(value).strip()
+        return settings
 
     def _resolve_providers(self, providers: Optional[List[str]]) -> List[str]:
         resolved = []

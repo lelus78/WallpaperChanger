@@ -3,7 +3,7 @@ import os
 import tkinter as tk
 from pathlib import Path
 from tkinter import ttk, messagebox, scrolledtext
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from PIL import Image, ImageTk
 
@@ -56,6 +56,13 @@ class WallpaperConfigGUI:
             max_items=int(CacheSettings.get("max_items", 60)),
             enable_rotation=bool(CacheSettings.get("enable_offline_rotation", True)),
         )
+
+        # Thumbnail cache to avoid reloading images
+        self.thumbnail_cache = {}
+
+        # Filter and sort state
+        self.filter_resolution = tk.StringVar(value="All")
+        self.sort_by = tk.StringVar(value="Newest First")
 
         self._load_config()
 
@@ -771,17 +778,35 @@ class WallpaperConfigGUI:
         change_btn.bind("<Enter>", btn_enter)
         change_btn.bind("<Leave>", btn_leave)
 
-        # Top controls
-        control_frame = ttk.Frame(self.cache_frame)
-        control_frame.pack(fill=tk.X, padx=10, pady=5)
+        # Top controls - Row 1: Filters and Sort
+        control_frame1 = ttk.Frame(self.cache_frame)
+        control_frame1.pack(fill=tk.X, padx=10, pady=(5, 2))
 
-        ttk.Label(control_frame, text="Select Monitor:").pack(side=tk.LEFT, padx=5)
+        ttk.Label(control_frame1, text="🔍 Filter by Resolution:").pack(side=tk.LEFT, padx=5)
+        filter_combo = ttk.Combobox(control_frame1, textvariable=self.filter_resolution,
+                                    values=["All", "1920x1080+", "2560x1440+", "3440x1440+", "3840x2160+"],
+                                    width=15, state="readonly")
+        filter_combo.pack(side=tk.LEFT, padx=5)
+        filter_combo.bind("<<ComboboxSelected>>", lambda e: self._apply_filters())
+
+        ttk.Label(control_frame1, text="📊 Sort by:").pack(side=tk.LEFT, padx=(15, 5))
+        sort_combo = ttk.Combobox(control_frame1, textvariable=self.sort_by,
+                                  values=["Newest First", "Oldest First", "Highest Resolution", "Lowest Resolution"],
+                                  width=18, state="readonly")
+        sort_combo.pack(side=tk.LEFT, padx=5)
+        sort_combo.bind("<<ComboboxSelected>>", lambda e: self._apply_filters())
+
+        # Row 2: Actions
+        control_frame2 = ttk.Frame(self.cache_frame)
+        control_frame2.pack(fill=tk.X, padx=10, pady=(2, 5))
+
+        ttk.Label(control_frame2, text="Select Monitor:").pack(side=tk.LEFT, padx=5)
         self.monitor_var = tk.StringVar(value="All Monitors")
-        self.monitor_combo = ttk.Combobox(control_frame, textvariable=self.monitor_var, width=30)
+        self.monitor_combo = ttk.Combobox(control_frame2, textvariable=self.monitor_var, width=30)
         self.monitor_combo.pack(side=tk.LEFT, padx=5)
 
-        ttk.Button(control_frame, text="🔄 Refresh Gallery", command=self._refresh_gallery).pack(side=tk.LEFT, padx=5)
-        ttk.Button(control_frame, text="🗑️ Clear Cache", command=self._clear_cache).pack(side=tk.LEFT, padx=5)
+        ttk.Button(control_frame2, text="🔄 Refresh Gallery", command=self._refresh_gallery).pack(side=tk.LEFT, padx=5)
+        ttk.Button(control_frame2, text="🗑️ Clear Cache", command=self._clear_cache).pack(side=tk.LEFT, padx=5)
 
         # Create canvas with scrollbar for gallery
         gallery_container = ttk.Frame(self.cache_frame)
@@ -1166,6 +1191,9 @@ PEXELS_API_KEY={pexels_key}
         for widget in self.gallery_frame.winfo_children():
             widget.destroy()
 
+        # Clear thumbnail cache
+        self.thumbnail_cache.clear()
+
         # Get cached items
         entries = self.cache_manager.list_entries()
 
@@ -1190,20 +1218,83 @@ PEXELS_API_KEY={pexels_key}
                              font=("Arial", 9), foreground="orange").pack(pady=5)
             return
 
-        # Store entries for responsive layout
-        self.cached_entries = entries[:30]  # Show last 30
+        # Store ALL entries for filtering/sorting
+        self.all_entries = entries
+
+        # Apply filters and sort
+        self._apply_filters()
+
+    def _apply_filters(self) -> None:
+        """Apply filters and sorting to gallery"""
+        if not hasattr(self, 'all_entries'):
+            return
+
+        filtered_entries = list(self.all_entries)
+
+        # Apply resolution filter
+        filter_val = self.filter_resolution.get()
+        if filter_val != "All":
+            min_width = int(filter_val.split('x')[0].replace('+', ''))
+            min_height = int(filter_val.split('x')[1].replace('+', ''))
+
+            filtered_entries = [
+                e for e in filtered_entries
+                if self._get_image_resolution(e)[0] >= min_width and
+                   self._get_image_resolution(e)[1] >= min_height
+            ]
+
+        # Apply sorting
+        sort_val = self.sort_by.get()
+        if sort_val == "Newest First":
+            pass  # Already in newest first order
+        elif sort_val == "Oldest First":
+            filtered_entries = list(reversed(filtered_entries))
+        elif sort_val == "Highest Resolution":
+            filtered_entries.sort(key=lambda e: self._get_image_resolution(e)[0] * self._get_image_resolution(e)[1], reverse=True)
+        elif sort_val == "Lowest Resolution":
+            filtered_entries.sort(key=lambda e: self._get_image_resolution(e)[0] * self._get_image_resolution(e)[1])
+
+        # Limit to 50 for performance
+        self.cached_entries = filtered_entries[:50]
 
         # Calculate responsive columns based on window width
         self._layout_thumbnails()
 
+    def _get_image_resolution(self, entry: Dict[str, Any]) -> Tuple[int, int]:
+        """Get image resolution from entry or file"""
+        # Try to get from cache metadata first
+        if 'width' in entry and 'height' in entry:
+            return (entry['width'], entry['height'])
+
+        # Try to read from image file
+        try:
+            image_path = entry.get("path", "")
+            if image_path and os.path.exists(image_path):
+                with Image.open(image_path) as img:
+                    return img.size
+        except:
+            pass
+
+        return (0, 0)  # Default if unable to determine
+
     def _on_gallery_resize(self, event) -> None:
         """Handle gallery canvas resize to re-layout thumbnails"""
-        if hasattr(self, 'cached_entries') and hasattr(self, '_resize_after_id'):
+        # Check if width actually changed significantly
+        if not hasattr(self, '_last_canvas_width'):
+            self._last_canvas_width = 0
+
+        new_width = self.gallery_canvas.winfo_width()
+        if abs(new_width - self._last_canvas_width) < 50:  # Ignore small changes
+            return
+
+        self._last_canvas_width = new_width
+
+        if hasattr(self, '_resize_after_id'):
             # Cancel previous scheduled re-layout
             self.root.after_cancel(self._resize_after_id)
 
-        # Schedule re-layout after 200ms to avoid excessive updates
-        self._resize_after_id = self.root.after(200, self._layout_thumbnails)
+        # Schedule re-layout after 500ms to avoid excessive updates during drag
+        self._resize_after_id = self.root.after(500, self._layout_thumbnails)
 
     def _layout_thumbnails(self) -> None:
         """Layout thumbnails in a responsive grid based on canvas width"""
@@ -1261,13 +1352,20 @@ PEXELS_API_KEY={pexels_key}
             if not image_path or not os.path.exists(image_path):
                 raise FileNotFoundError(f"Image not found: {image_path}")
 
-            # Load and resize image
-            img = Image.open(image_path)
-            original_size = img.size  # Store original resolution
+            # Check thumbnail cache first
+            if image_path in self.thumbnail_cache:
+                photo, original_size = self.thumbnail_cache[image_path]
+            else:
+                # Load and resize image
+                img = Image.open(image_path)
+                original_size = img.size  # Store original resolution
 
-            # Add rounded corners effect by adding border
-            img.thumbnail((250, 150), Image.Resampling.LANCZOS if hasattr(Image, 'Resampling') else Image.LANCZOS)
-            photo = ImageTk.PhotoImage(img)
+                # Create thumbnail
+                img.thumbnail((250, 150), Image.Resampling.LANCZOS if hasattr(Image, 'Resampling') else Image.LANCZOS)
+                photo = ImageTk.PhotoImage(img)
+
+                # Cache the thumbnail
+                self.thumbnail_cache[image_path] = (photo, original_size)
 
             # Image container
             img_container = tk.Frame(card, bg=self.COLORS['bg_tertiary'])

@@ -1170,7 +1170,7 @@ PEXELS_API_KEY={pexels_key}
                                  justify=tk.LEFT)
             info_label.pack(anchor=tk.W, pady=(2, 5))
 
-            # Apply button with accent style
+            # Apply button with accent style - shows monitor selection menu
             apply_btn = tk.Button(card, text="✨ Apply to Monitor",
                                  bg=self.COLORS['accent'],
                                  fg='#1e1e2e',
@@ -1179,7 +1179,7 @@ PEXELS_API_KEY={pexels_key}
                                  cursor='hand2',
                                  padx=15,
                                  pady=8,
-                                 command=lambda e=entry: self._apply_wallpaper(e))
+                                 command=lambda e=entry: self._show_monitor_selection(e))
             apply_btn.pack(pady=(0, 10), padx=10, fill=tk.X)
 
             # Button hover effect
@@ -1201,9 +1201,114 @@ PEXELS_API_KEY={pexels_key}
                                   justify=tk.CENTER)
             error_label.pack(pady=20, padx=10)
 
-    def _apply_wallpaper(self, entry: Dict[str, Any]) -> None:
+    def _show_monitor_selection(self, entry: Dict[str, Any]) -> None:
+        """Show monitor selection dialog"""
+        # Create popup window
+        popup = tk.Toplevel(self.root)
+        popup.title("Select Monitor")
+        popup.geometry("400x300")
+        popup.configure(bg=self.COLORS['bg_secondary'])
+        popup.transient(self.root)
+        popup.grab_set()
+
+        # Center the popup
+        popup.update_idletasks()
+        x = (popup.winfo_screenwidth() // 2) - (400 // 2)
+        y = (popup.winfo_screenheight() // 2) - (300 // 2)
+        popup.geometry(f"+{x}+{y}")
+
+        # Title
+        title_label = tk.Label(popup,
+                              text="🖥️ Select Monitor",
+                              bg=self.COLORS['bg_secondary'],
+                              fg=self.COLORS['accent'],
+                              font=('Segoe UI', 14, 'bold'))
+        title_label.pack(pady=(20, 10))
+
+        # Info
+        info_label = tk.Label(popup,
+                             text="Choose which monitor to apply this wallpaper to:",
+                             bg=self.COLORS['bg_secondary'],
+                             fg=self.COLORS['text_secondary'],
+                             font=('Segoe UI', 9))
+        info_label.pack(pady=(0, 20))
+
+        # Get available monitors
+        from main import enumerate_monitors_user32, DesktopWallpaperController
+
+        monitors = []
+        try:
+            manager = DesktopWallpaperController()
+            monitors = manager.enumerate_monitors()
+            manager.close()
+        except Exception:
+            try:
+                monitors = enumerate_monitors_user32()
+            except Exception:
+                pass
+
+        # Buttons frame
+        buttons_frame = tk.Frame(popup, bg=self.COLORS['bg_secondary'])
+        buttons_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=10)
+
+        # All Monitors button
+        all_btn = tk.Button(buttons_frame,
+                           text="🖥️ All Monitors",
+                           bg=self.COLORS['accent'],
+                           fg='#1e1e2e',
+                           font=('Segoe UI', 10, 'bold'),
+                           relief=tk.FLAT,
+                           cursor='hand2',
+                           padx=20,
+                           pady=12,
+                           command=lambda: [popup.destroy(), self._apply_wallpaper(entry, "All Monitors", monitors)])
+        all_btn.pack(fill=tk.X, pady=5)
+
+        # Individual monitor buttons
+        for idx, monitor in enumerate(monitors):
+            monitor_name = f"Monitor {idx + 1} ({monitor.get('width')}x{monitor.get('height')})"
+            mon_btn = tk.Button(buttons_frame,
+                               text=f"🖥️ {monitor_name}",
+                               bg=self.COLORS['bg_tertiary'],
+                               fg=self.COLORS['text_primary'],
+                               font=('Segoe UI', 10),
+                               relief=tk.FLAT,
+                               cursor='hand2',
+                               padx=20,
+                               pady=10,
+                               command=lambda m=monitor_name, i=idx: [popup.destroy(),
+                                                                       self._apply_wallpaper(entry, m, monitors, i)])
+            mon_btn.pack(fill=tk.X, pady=3)
+
+            # Hover effects
+            def make_hover(btn):
+                def on_enter(e):
+                    btn.configure(bg=self.COLORS['accent_hover'])
+                def on_leave(e):
+                    btn.configure(bg=self.COLORS['bg_tertiary'])
+                btn.bind("<Enter>", on_enter)
+                btn.bind("<Leave>", on_leave)
+
+            make_hover(mon_btn)
+
+        # Cancel button
+        cancel_btn = tk.Button(buttons_frame,
+                              text="❌ Cancel",
+                              bg=self.COLORS['error'],
+                              fg='#1e1e2e',
+                              font=('Segoe UI', 9, 'bold'),
+                              relief=tk.FLAT,
+                              cursor='hand2',
+                              padx=15,
+                              pady=8,
+                              command=popup.destroy)
+        cancel_btn.pack(fill=tk.X, pady=(10, 5))
+
+    def _apply_wallpaper(self, entry: Dict[str, Any], monitor_selection: str = None,
+                         monitors_list: List = None, monitor_idx: int = None) -> None:
         """Apply selected wallpaper to monitor"""
-        monitor_selection = self.monitor_var.get()
+        if monitor_selection is None:
+            monitor_selection = self.monitor_var.get()
 
         try:
             from main import WallpaperApp, DesktopWallpaperController, enumerate_monitors_user32
@@ -1225,13 +1330,19 @@ PEXELS_API_KEY={pexels_key}
                 messagebox.showinfo("Success", "Wallpaper applied to all monitors!")
             else:
                 # Apply to specific monitor
-                monitor_idx = int(monitor_selection.split()[1]) - 1
+                # If monitor_idx is passed directly, use it. Otherwise parse from selection string
+                if monitor_idx is None:
+                    monitor_idx = int(monitor_selection.split()[1]) - 1
 
-                manager = DesktopWallpaperController()
-                monitors = manager.enumerate_monitors()
+                # Get monitors if not passed
+                if monitors_list is None:
+                    manager = DesktopWallpaperController()
+                    monitors_list = manager.enumerate_monitors()
+                else:
+                    manager = DesktopWallpaperController()
 
-                if monitor_idx < len(monitors):
-                    manager.set_wallpaper(monitors[monitor_idx]["id"], wallpaper_path)
+                if monitor_idx < len(monitors_list):
+                    manager.set_wallpaper(monitors_list[monitor_idx]["id"], wallpaper_path)
                     manager.close()
                     messagebox.showinfo("Success", f"Wallpaper applied to {monitor_selection}!")
                 else:

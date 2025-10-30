@@ -524,6 +524,11 @@ class WallpaperConfigGUI:
         self.notebook.add(self.advanced_frame, text="🔧 Advanced")
         self._create_advanced_tab()
 
+        # Tab 4: Logs
+        self.logs_frame = ttk.Frame(self.notebook)
+        self.notebook.add(self.logs_frame, text="📋 Logs")
+        self._create_logs_tab()
+
         # Bottom buttons
         button_frame = ttk.Frame(self.root)
         button_frame.pack(fill=tk.X, padx=10, pady=5)
@@ -846,6 +851,155 @@ class WallpaperConfigGUI:
         )
         ttk.Label(info_group, text=info_text, font=("Arial", 9), justify=tk.LEFT).pack(anchor=tk.W, padx=5, pady=5)
 
+    def _create_logs_tab(self) -> None:
+        """Create logs tab to display application logs"""
+        # Main container
+        container = tk.Frame(self.logs_frame, bg=self.COLORS['bg_primary'])
+        container.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+
+        # Title
+        title_label = tk.Label(container,
+                              text="📋 Application Logs",
+                              bg=self.COLORS['bg_primary'],
+                              fg=self.COLORS['accent'],
+                              font=('Segoe UI', 14, 'bold'))
+        title_label.pack(pady=(0, 10))
+
+        # Control buttons frame
+        controls_frame = tk.Frame(container, bg=self.COLORS['bg_primary'])
+        controls_frame.pack(fill=tk.X, pady=(0, 10))
+
+        # Refresh button
+        refresh_btn = tk.Button(controls_frame,
+                               text="🔄 Refresh Logs",
+                               bg=self.COLORS['accent'],
+                               fg='#1e1e2e',
+                               font=('Segoe UI', 9, 'bold'),
+                               relief=tk.FLAT,
+                               cursor='hand2',
+                               padx=15,
+                               pady=8,
+                               command=self._refresh_logs)
+        refresh_btn.pack(side=tk.LEFT, padx=5)
+
+        # Auto-refresh checkbox
+        self.auto_refresh_var = tk.BooleanVar(value=False)
+        auto_refresh_cb = ttk.Checkbutton(controls_frame,
+                                         text="Auto-refresh (3s)",
+                                         variable=self.auto_refresh_var,
+                                         command=self._toggle_auto_refresh)
+        auto_refresh_cb.pack(side=tk.LEFT, padx=10)
+
+        # Clear logs button
+        clear_btn = tk.Button(controls_frame,
+                             text="🗑️ Clear Logs",
+                             bg=self.COLORS['error'],
+                             fg='#1e1e2e',
+                             font=('Segoe UI', 9, 'bold'),
+                             relief=tk.FLAT,
+                             cursor='hand2',
+                             padx=15,
+                             pady=8,
+                             command=self._clear_logs_file)
+        clear_btn.pack(side=tk.RIGHT, padx=5)
+
+        # Log viewer with scrollbar
+        log_frame = tk.Frame(container, bg=self.COLORS['bg_secondary'])
+        log_frame.pack(fill=tk.BOTH, expand=True)
+
+        # Scrollbar
+        scrollbar = ttk.Scrollbar(log_frame)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+
+        # Text widget for logs
+        self.log_text = tk.Text(log_frame,
+                               wrap=tk.WORD,
+                               bg=self.COLORS['bg_secondary'],
+                               fg=self.COLORS['text_primary'],
+                               font=('Consolas', 9),
+                               yscrollcommand=scrollbar.set,
+                               relief=tk.FLAT,
+                               padx=10,
+                               pady=10)
+        self.log_text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        scrollbar.config(command=self.log_text.yview)
+
+        # Configure tags for different log levels
+        self.log_text.tag_config('INFO', foreground=self.COLORS['success'])
+        self.log_text.tag_config('WARNING', foreground=self.COLORS['warning'])
+        self.log_text.tag_config('ERROR', foreground=self.COLORS['error'])
+        self.log_text.tag_config('DEBUG', foreground=self.COLORS['text_muted'])
+
+        # Load initial logs
+        self._refresh_logs()
+
+    def _refresh_logs(self) -> None:
+        """Refresh the log display"""
+        try:
+            log_path = Path(__file__).parent / "wallpaperchanger.log"
+
+            if not log_path.exists():
+                self.log_text.delete(1.0, tk.END)
+                self.log_text.insert(tk.END, "No log file found.\n\n", 'INFO')
+                self.log_text.insert(tk.END, "The log file will be created when the Wallpaper Changer service starts.\n", 'INFO')
+                return
+
+            # Read log file
+            with open(log_path, 'r', encoding='utf-8') as f:
+                logs = f.read()
+
+            # Clear current content
+            self.log_text.delete(1.0, tk.END)
+
+            # Parse and colorize logs
+            for line in logs.splitlines():
+                if ' - INFO - ' in line:
+                    self.log_text.insert(tk.END, line + '\n', 'INFO')
+                elif ' - WARNING - ' in line:
+                    self.log_text.insert(tk.END, line + '\n', 'WARNING')
+                elif ' - ERROR - ' in line:
+                    self.log_text.insert(tk.END, line + '\n', 'ERROR')
+                elif ' - DEBUG - ' in line:
+                    self.log_text.insert(tk.END, line + '\n', 'DEBUG')
+                else:
+                    self.log_text.insert(tk.END, line + '\n')
+
+            # Auto-scroll to bottom
+            self.log_text.see(tk.END)
+
+        except Exception as e:
+            self.log_text.delete(1.0, tk.END)
+            self.log_text.insert(tk.END, f"Error reading log file: {e}\n", 'ERROR')
+
+    def _toggle_auto_refresh(self) -> None:
+        """Toggle auto-refresh of logs"""
+        if self.auto_refresh_var.get():
+            self._auto_refresh_logs()
+
+    def _auto_refresh_logs(self) -> None:
+        """Auto-refresh logs every 3 seconds"""
+        if self.auto_refresh_var.get():
+            self._refresh_logs()
+            self.root.after(3000, self._auto_refresh_logs)
+
+    def _clear_logs_file(self) -> None:
+        """Clear the log file"""
+        result = messagebox.askyesno("Confirm",
+                                     "Are you sure you want to clear all logs?\n\n"
+                                     "This action cannot be undone.")
+        if result:
+            try:
+                log_path = Path(__file__).parent / "wallpaperchanger.log"
+                if log_path.exists():
+                    with open(log_path, 'w', encoding='utf-8') as f:
+                        f.write('')
+                    self._refresh_logs()
+                    messagebox.showinfo("Success", "Logs cleared successfully!")
+                else:
+                    messagebox.showwarning("Warning", "No log file found.")
+            except Exception as e:
+                messagebox.showerror("Error", f"Failed to clear logs: {e}")
+
     def _get_config_content(self) -> str:
         """Get config.py content"""
         try:
@@ -1090,10 +1244,6 @@ PEXELS_API_KEY={pexels_key}
     def _change_wallpaper_now(self) -> None:
         """Trigger immediate wallpaper change via main app"""
         try:
-            # Try to trigger wallpaper change via keyboard hotkey simulation
-            # This is the safest way to trigger the main app's change function
-            import subprocess
-
             # Check if main app is running by looking for PID file
             pid_path = Path(__file__).parent / "wallpaperchanger.pid"
 
@@ -1105,50 +1255,41 @@ PEXELS_API_KEY={pexels_key}
                     "• or 'python main.py'")
                 return
 
-            # Simulate the hotkey press to trigger wallpaper change
-            try:
-                import keyboard
-                keybind = self.keybind_var.get() if hasattr(self, 'keybind_var') else 'ctrl+alt+w'
+            # Create signal file to trigger wallpaper change
+            signal_path = Path(__file__).parent / "wallpaperchanger.signal"
 
-                # Show loading message
-                loading_window = tk.Toplevel(self.root)
-                loading_window.title("Changing Wallpaper")
-                loading_window.geometry("350x120")
-                loading_window.configure(bg=self.COLORS['bg_secondary'])
-                loading_window.transient(self.root)
-                loading_window.grab_set()
+            # Show loading message
+            loading_window = tk.Toplevel(self.root)
+            loading_window.title("Changing Wallpaper")
+            loading_window.geometry("350x120")
+            loading_window.configure(bg=self.COLORS['bg_secondary'])
+            loading_window.transient(self.root)
+            loading_window.grab_set()
 
-                # Center the loading window
-                loading_window.update_idletasks()
-                x = (loading_window.winfo_screenwidth() // 2) - (350 // 2)
-                y = (loading_window.winfo_screenheight() // 2) - (120 // 2)
-                loading_window.geometry(f"+{x}+{y}")
+            # Center the loading window
+            loading_window.update_idletasks()
+            x = (loading_window.winfo_screenwidth() // 2) - (350 // 2)
+            y = (loading_window.winfo_screenheight() // 2) - (120 // 2)
+            loading_window.geometry(f"+{x}+{y}")
 
-                msg_label = tk.Label(loading_window,
-                                    text="🎨 Changing wallpaper...\n\nPlease wait a moment.",
-                                    bg=self.COLORS['bg_secondary'],
-                                    fg=self.COLORS['text_primary'],
-                                    font=('Segoe UI', 11))
-                msg_label.pack(expand=True)
+            msg_label = tk.Label(loading_window,
+                                text="🎨 Changing wallpaper...\n\nPlease wait a moment.",
+                                bg=self.COLORS['bg_secondary'],
+                                fg=self.COLORS['text_primary'],
+                                font=('Segoe UI', 11))
+            msg_label.pack(expand=True)
 
-                loading_window.update()
+            loading_window.update()
 
-                # Trigger hotkey
-                keyboard.press_and_release(keybind)
+            # Create signal file
+            with open(signal_path, 'w') as f:
+                f.write('change')
 
-                # Wait a bit for the change to happen
-                self.root.after(2000, lambda: loading_window.destroy())
-                self.root.after(2500, lambda: messagebox.showinfo("Success",
-                    "Wallpaper change triggered!\n\n"
-                    "The wallpaper should update shortly."))
-
-            except ImportError:
-                messagebox.showerror("Error",
-                    "Keyboard module not available.\n\n"
-                    "Use the system tray icon to change wallpaper,\n"
-                    "or press the hotkey: " + keybind)
-            except Exception as e:
-                messagebox.showerror("Error", f"Failed to trigger wallpaper change: {e}")
+            # Wait for the change to happen
+            self.root.after(2000, lambda: loading_window.destroy())
+            self.root.after(2500, lambda: messagebox.showinfo("Success",
+                "Wallpaper change triggered!\n\n"
+                "Check the Logs tab for details."))
 
         except Exception as e:
             messagebox.showerror("Error", f"Failed to change wallpaper: {e}")

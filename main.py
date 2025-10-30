@@ -1,5 +1,6 @@
 import atexit
 import ctypes
+import logging
 import os
 import random
 import threading
@@ -303,6 +304,21 @@ def normalize_wallhaven_top_range(value: Optional[str]) -> str:
 
 class WallpaperApp:
     def __init__(self) -> None:
+        # Setup logging
+        self.app_dir = os.path.dirname(os.path.abspath(__file__))
+        self.log_path = os.path.join(self.app_dir, "wallpaperchanger.log")
+        self.signal_path = os.path.join(self.app_dir, "wallpaperchanger.signal")
+
+        logging.basicConfig(
+            level=logging.INFO,
+            format='%(asctime)s - %(levelname)s - %(message)s',
+            handlers=[
+                logging.FileHandler(self.log_path, encoding='utf-8'),
+                logging.StreamHandler()
+            ]
+        )
+        self.logger = logging.getLogger(__name__)
+
         self.preset_manager = PresetManager()
         self.active_preset = self.preset_manager.default_name
 
@@ -318,14 +334,15 @@ class WallpaperApp:
         self.scheduler = SchedulerService(self, SchedulerSettings)
         self.tray_app = TrayApp(self)
         self._stop_event = threading.Event()
-        self.pid_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "wallpaperchanger.pid")
+        self.pid_path = os.path.join(self.app_dir, "wallpaperchanger.pid")
         self._pid_registered = False
 
     def start(self) -> None:
-        print(f"Initial wallpaper update in progress (hotkey: {KeyBind})...")
+        self.logger.info(f"Starting Wallpaper Changer (hotkey: {KeyBind})")
         self._write_pid()
         self.change_wallpaper("startup")
         self._register_hotkey()
+        self._start_signal_monitor()
         self.scheduler.start()
         self.tray_app.start()
         self._run_loop()
@@ -366,11 +383,32 @@ class WallpaperApp:
     def _register_hotkey(self) -> None:
         keyboard.add_hotkey(KeyBind, lambda: self.change_wallpaper("hotkey"))
 
+    def _start_signal_monitor(self) -> None:
+        """Start thread to monitor signal file for GUI-triggered changes"""
+        def monitor_signal():
+            while not self._stop_event.is_set():
+                try:
+                    if os.path.exists(self.signal_path):
+                        # Signal file exists, trigger wallpaper change
+                        self.logger.info("Signal file detected, triggering wallpaper change")
+                        try:
+                            os.remove(self.signal_path)
+                        except OSError:
+                            pass
+                        self.change_wallpaper("gui")
+                except Exception as e:
+                    self.logger.error(f"Error monitoring signal file: {e}")
+                time.sleep(0.5)
+
+        signal_thread = threading.Thread(target=monitor_signal, daemon=True)
+        signal_thread.start()
+        self.logger.info("Signal monitor started")
+
     def set_active_preset(self, preset_name: str) -> None:
         if preset_name == self.active_preset:
             return
         self.active_preset = preset_name
-        print(f"Preset switched to '{preset_name}'")
+        self.logger.info(f"Preset switched to '{preset_name}'")
         self.change_wallpaper("preset-switch", preset_name=preset_name)
 
     def pick_active_provider(self, preset: Preset, fallback_provider: Optional[str] = None) -> str:
@@ -391,7 +429,7 @@ class WallpaperApp:
 
     def change_wallpaper(
         self,
-        trigger: Literal["startup", "hotkey", "scheduler", "tray", "tray-cache", "preset-switch"],
+        trigger: Literal["startup", "hotkey", "scheduler", "tray", "tray-cache", "preset-switch", "gui"],
         preset_name: Optional[str] = None,
         provider_override: Optional[str] = None,
         use_cache: bool = False,
@@ -403,20 +441,21 @@ class WallpaperApp:
             else self.pick_active_provider(preset, fallback_provider=Provider)
         )
 
+        self.logger.info(f"Wallpaper change triggered by: {trigger}")
         manager = self._create_desktop_controller()
         monitors = []
         if manager:
             try:
                 monitors = manager.enumerate_monitors()
             except OSError as error:
-                print(f"Per-monitor wallpaper initialization failed: {error}")
+                self.logger.error(f"Per-monitor wallpaper initialization failed: {error}")
                 monitors = []
 
         if not monitors:
             try:
                 monitors = enumerate_monitors_user32()
             except OSError as error:
-                print(f"Monitor enumeration via user32 failed: {error}")
+                self.logger.error(f"Monitor enumeration via user32 failed: {error}")
                 monitors = []
 
         tasks = self._build_tasks(monitors, preset, provider)
@@ -431,7 +470,7 @@ class WallpaperApp:
                     line, used_provider = self._process_task(task, index, manager)
                     results.append((line, used_provider))
             elif len(tasks) > 1:
-                print("Per-monitor API unavailable; composing a span wallpaper instead.")
+                self.logger.info("Per-monitor API unavailable; composing a span wallpaper instead.")
                 results.extend(self._apply_span(tasks))
             else:
                 line, used_provider = self._process_single(tasks[0])
@@ -442,12 +481,12 @@ class WallpaperApp:
             self.cache_manager.prune()
 
         providers_used = sorted({prov for _, prov in results}) or [provider]
-        print(
+        self.logger.info(
             f"Wallpaper updated ({trigger}) using providers {', '.join(providers_used)} "
             f"and preset '{preset.name}'."
         )
         for line, _ in results:
-            print(f" - {line}")
+            self.logger.info(f" - {line}")
 
     def apply_cached_wallpaper(self, trigger: str) -> bool:
         if not self.cache_manager.enable_rotation:

@@ -15,8 +15,10 @@ wallpaper*.jpg
 wallpaper*.bmp
 wallpaper*.png
 
-# PID file
+# PID file and runtime files
 wallpaperchanger.pid
+wallpaperchanger.log
+wallpaperchanger.signal
 
 # IDE and editor files
 .vscode/

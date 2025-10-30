@@ -38,6 +38,13 @@ class CacheManager:
             return None
 
         with self._lock:
+            # Check for duplicates
+            source_info = metadata.get("source_info")
+            if source_info:
+                for item in self._index.get("items", []):
+                    if item.get("source_info") == source_info:
+                        return item.get("path")
+
             os.makedirs(self.directory, exist_ok=True)
             extension = os.path.splitext(source_path)[1] or ".jpg"
             cache_id = f"{int(time.time() * 1000)}_{random.randint(1000, 9999)}"

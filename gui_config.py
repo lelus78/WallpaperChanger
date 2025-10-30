@@ -45,7 +45,9 @@ class WallpaperConfigGUI:
         # Configure modern theme
         self._setup_theme()
 
-        self.config_path = Path(__file__).parent / "config.py"
+        base_path = Path(__file__).parent
+        self.config_path = base_path / "config.py"
+        self.provider_state_path = base_path / "provider_state.json"
         self.config_data: Dict[str, Any] = {}
 
         cache_dir = CacheSettings.get("directory") or os.path.join(
@@ -290,6 +292,128 @@ class WallpaperConfigGUI:
         # Schedule next update
         self.root.after(3000, self._update_status_indicator)
 
+    def _send_signal_command(self, payload: Any) -> bool:
+        """Write a command payload for the main app to consume."""
+        signal_path = self.provider_state_path.with_name("wallpaperchanger.signal")
+        try:
+            if signal_path.exists():
+                signal_path.unlink()
+            with open(signal_path, "w", encoding="utf-8") as handle:
+                if isinstance(payload, (dict, list)):
+                    json.dump(payload, handle)
+                else:
+                    handle.write(str(payload))
+            return True
+        except Exception as exc:
+            messagebox.showerror(
+                "Error",
+                "Failed to communicate with the Wallpaper Changer service.\n\n"
+                f"Details: {exc}"
+            )
+            return False
+
+    def _format_provider_info(self, state: Dict[str, Any]) -> str:
+        """Build a short status string describing provider rotation."""
+        if not state:
+            return "Provider info unavailable."
+
+        info_parts: List[str] = []
+
+        sequences = state.get("sequences")
+        if isinstance(sequences, list):
+            sequence_entry = None
+            for entry in sequences:
+                if not isinstance(entry, dict):
+                    continue
+                sequence = entry.get("sequence")
+                if isinstance(sequence, list) and sequence:
+                    sequence_entry = entry
+                    break
+            if sequence_entry:
+                sequence_list = [str(item) for item in sequence_entry.get("sequence", [])]
+                next_provider = sequence_entry.get("next_provider")
+                if not next_provider and sequence_list:
+                    next_index = sequence_entry.get("next_index", 0)
+                    if isinstance(next_index, int) and sequence_list:
+                        next_provider = sequence_list[next_index % len(sequence_list)]
+                if sequence_list:
+                    info_parts.append(f"Sequence: {' -> '.join(sequence_list)}")
+                if next_provider:
+                    info_parts.append(f"Next: {next_provider}")
+
+        providers_used = state.get("providers_used")
+        if isinstance(providers_used, list) and providers_used:
+            info_parts.append(f"Last used: {', '.join(str(p) for p in providers_used)}")
+
+        timestamp = state.get("timestamp")
+        if isinstance(timestamp, str) and timestamp:
+            info_parts.append(f"Updated: {timestamp}")
+
+        note = state.get("note")
+        if isinstance(note, str) and note:
+            info_parts.append(note)
+
+        if not info_parts:
+            return "Provider rotation not configured."
+        return " | ".join(info_parts)
+
+    def _update_provider_info(self, schedule_next: bool = True) -> None:
+        """Refresh provider rotation label from shared state."""
+        if not hasattr(self, "provider_info_label"):
+            return
+
+        state: Dict[str, Any] = {}
+        try:
+            if self.provider_state_path.exists():
+                with open(self.provider_state_path, "r", encoding="utf-8") as handle:
+                    data = json.load(handle)
+                if isinstance(data, dict):
+                    state = data
+        except (OSError, json.JSONDecodeError):
+            state = {}
+
+        self.provider_info_label.configure(text=self._format_provider_info(state))
+
+        if schedule_next:
+            self.root.after(5000, self._update_provider_info)
+
+    def _cycle_provider(self) -> None:
+        """Advance provider rotation without triggering a change."""
+        if not self._check_app_status():
+            messagebox.showwarning(
+                "Service Not Running",
+                "Start the Wallpaper Changer service before cycling providers."
+            )
+            return
+
+        if hasattr(self, "provider_info_label"):
+            self.provider_info_label.configure(text="Cycling provider...")
+
+        if self._send_signal_command({"action": "cycle_provider"}):
+            self.root.after(750, lambda: self._update_provider_info(schedule_next=False))
+
+    def _reset_provider_rotation(self) -> None:
+        """Reset provider rotation to the first provider."""
+        if not self._check_app_status():
+            messagebox.showwarning(
+                "Service Not Running",
+                "Start the Wallpaper Changer service before resetting the rotation."
+            )
+            return
+
+        confirm = messagebox.askyesno(
+            "Reset Provider Rotation",
+            "Reset the provider rotation back to the first provider?"
+        )
+        if not confirm:
+            return
+
+        if hasattr(self, "provider_info_label"):
+            self.provider_info_label.configure(text="Resetting provider rotation...")
+
+        if self._send_signal_command({"action": "reset_provider_rotation"}):
+            self.root.after(750, lambda: self._update_provider_info(schedule_next=False))
+
     def _toggle_service(self) -> None:
         """Toggle the wallpaper service on/off"""
         import subprocess
@@ -416,6 +540,7 @@ class WallpaperConfigGUI:
             self.config_data = {
                 "Provider": self._extract_value(content, "Provider"),
                 "ProvidersSequence": self._extract_list(content, "ProvidersSequence"),
+                "RotateProviders": self._extract_value(content, "RotateProviders") == "True",
                 "Query": self._extract_value(content, "Query"),
                 "PurityLevel": self._extract_value(content, "PurityLevel"),
                 "ScreenResolution": self._extract_value(content, "ScreenResolution"),
@@ -619,6 +744,11 @@ class WallpaperConfigGUI:
         self.query_var = tk.StringVar(value=self.config_data.get("Query", "nature"))
         ttk.Entry(provider_group, textvariable=self.query_var, width=33).grid(row=1, column=1, pady=2)
 
+        self.rotate_providers_var = tk.BooleanVar(value=self.config_data.get("RotateProviders", True))
+        ttk.Checkbutton(provider_group, text="Enable Provider Rotation",
+
+                       variable=self.rotate_providers_var).grid(row=2, column=0, columnspan=2, sticky=tk.W, pady=2)
+
         # Wallhaven Settings
         wallhaven_group = ttk.LabelFrame(scrollable_frame, text="Wallhaven Settings", padding=10)
         wallhaven_group.pack(fill=tk.X, padx=10, pady=5)
@@ -752,10 +882,11 @@ class WallpaperConfigGUI:
 
     def _create_cache_tab(self) -> None:
         """Create cache/gallery tab content"""
-        # Prominent "Change Wallpaper Now" button
+        # Prominent "Change Wallpaper Now" button with provider info
         change_wallpaper_frame = tk.Frame(self.cache_frame, bg=self.COLORS['bg_primary'])
         change_wallpaper_frame.pack(fill=tk.X, padx=15, pady=15)
 
+        # Top row: Main change button
         change_btn = tk.Button(change_wallpaper_frame,
                               text="🎨 CHANGE WALLPAPER NOW",
                               bg=self.COLORS['accent'],
@@ -767,6 +898,47 @@ class WallpaperConfigGUI:
                               pady=15,
                               command=self._change_wallpaper_now)
         change_btn.pack(fill=tk.X)
+
+        # Provider rotation controls
+        provider_frame = tk.Frame(change_wallpaper_frame, bg=self.COLORS['bg_secondary'])
+        provider_frame.pack(fill=tk.X, pady=(10, 0))
+
+        # Provider info label
+        self.provider_info_label = tk.Label(provider_frame,
+                                           text="Loading provider info...",
+                                           bg=self.COLORS['bg_secondary'],
+                                           fg=self.COLORS['text_primary'],
+                                           font=('Segoe UI', 9))
+        self.provider_info_label.pack(side=tk.LEFT, padx=10, pady=8)
+
+        # Cycle provider button
+        cycle_btn = tk.Button(provider_frame,
+                             text="🔄 Cycle to Next Provider",
+                             bg=self.COLORS['bg_tertiary'],
+                             fg=self.COLORS['text_primary'],
+                             font=('Segoe UI', 9),
+                             relief=tk.FLAT,
+                             cursor='hand2',
+                             padx=15,
+                             pady=5,
+                             command=self._cycle_provider)
+        cycle_btn.pack(side=tk.LEFT, padx=5)
+
+        # Reset rotation button
+        reset_btn = tk.Button(provider_frame,
+                             text="↺ Reset Rotation",
+                             bg=self.COLORS['bg_tertiary'],
+                             fg=self.COLORS['warning'],
+                             font=('Segoe UI', 9),
+                             relief=tk.FLAT,
+                             cursor='hand2',
+                             padx=15,
+                             pady=5,
+                             command=self._reset_provider_rotation)
+        reset_btn.pack(side=tk.LEFT, padx=5)
+
+        # Update provider info after initialization
+        self.root.after(500, self._update_provider_info)
 
         # Button hover effect
         def btn_enter(e):
@@ -1584,18 +1756,13 @@ PEXELS_API_KEY={pexels_key}
         """Trigger immediate wallpaper change via main app"""
         try:
             # Check if main app is running by looking for PID file
-            pid_path = Path(__file__).parent / "wallpaperchanger.pid"
-
-            if not pid_path.exists():
+            if not self._check_app_status():
                 messagebox.showwarning("App Not Running",
                     "The Wallpaper Changer app is not currently running.\n\n"
                     "Please start it first using:\n"
                     "• launchers/start_wallpaper_changer.vbs\n"
                     "• or 'python main.py'")
                 return
-
-            # Create signal file to trigger wallpaper change
-            signal_path = Path(__file__).parent / "wallpaperchanger.signal"
 
             # Show loading message
             loading_window = tk.Toplevel(self.root)
@@ -1620,15 +1787,16 @@ PEXELS_API_KEY={pexels_key}
 
             loading_window.update()
 
-            # Create signal file
-            with open(signal_path, 'w') as f:
-                f.write('change')
+            if not self._send_signal_command({"action": "change_wallpaper"}):
+                loading_window.destroy()
+                return
 
             # Wait for the change to happen
             self.root.after(2000, lambda: loading_window.destroy())
             self.root.after(2500, lambda: messagebox.showinfo("Success",
                 "Wallpaper change triggered!\n\n"
                 "Check the Logs tab for details."))
+            self.root.after(1200, lambda: self._update_provider_info(schedule_next=False))
 
         except Exception as e:
             messagebox.showerror("Error", f"Failed to change wallpaper: {e}")
@@ -1674,6 +1842,8 @@ PEXELS_API_KEY={pexels_key}
                     new_lines.append(f'WallhavenTopRange = "{self.toprange_var.get()}"\n')
                 elif line.strip().startswith("PexelsMode ="):
                     new_lines.append(f'PexelsMode = "{self.pexels_mode_var.get()}"\n')
+                elif line.strip().startswith("RotateProviders ="):
+                    new_lines.append(f'RotateProviders = {self.rotate_providers_var.get()}\n')
                 elif line.strip().startswith("KeyBind ="):
                     new_lines.append(f'KeyBind = "{self.keybind_var.get()}"\n')
                 elif '"enabled":' in line and "SchedulerSettings" in "".join(new_lines[-10:]):

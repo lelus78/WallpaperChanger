@@ -1,5 +1,6 @@
 import atexit
 import ctypes
+import json
 import logging
 import os
 import random
@@ -8,7 +9,7 @@ import time
 import uuid
 from contextlib import suppress
 from datetime import datetime
-from typing import Dict, List, Literal, Optional, Tuple
+from typing import Callable, Dict, List, Literal, Optional, Tuple
 
 import keyboard
 import requests
@@ -24,6 +25,7 @@ from config import (
     PexelsMode,
     Provider,
     ProvidersSequence,
+    RotateProviders,
     SchedulerSettings,
 )
 from preset_manager import Preset, PresetManager
@@ -53,6 +55,7 @@ IID_IDESKTOP_WALLPAPER = uuid.UUID("{B92B56A9-8B55-4E14-9A89-0199BBB6F93B}")
 CLSCTX_ALL = 23
 COINIT_APARTMENTTHREADED = 0x2
 PROVIDER_SEQUENCE_STATE: Dict[Tuple[str, ...], int] = {}
+PROVIDER_STATE_FILE = "provider_state.json"
 WALLHAVEN_SORT_OPTIONS = {"random", "toplist", "favorites", "views"}
 WALLHAVEN_TOP_RANGE_MAP = {
     "1d": "1d",
@@ -280,11 +283,10 @@ def ensure_provider(name: str) -> str:
     return normalized
 
 
-def normalize_provider(value: Optional[str], fallback: Optional[str] = None) -> str:
-    for candidate in (value, fallback, Provider):
-        provider = normalize_string(candidate)
-        if provider:
-            return ensure_provider(provider)
+def normalize_provider(value: Optional[str]) -> str:
+    provider = normalize_string(value)
+    if provider:
+        return ensure_provider(provider)
     return PROVIDER_WALLHAVEN
 
 
@@ -308,6 +310,7 @@ class WallpaperApp:
         self.app_dir = os.path.dirname(os.path.abspath(__file__))
         self.log_path = os.path.join(self.app_dir, "wallpaperchanger.log")
         self.signal_path = os.path.join(self.app_dir, "wallpaperchanger.signal")
+        self.provider_state_path = os.path.join(self.app_dir, PROVIDER_STATE_FILE)
 
         logging.basicConfig(
             level=logging.INFO,
@@ -318,6 +321,7 @@ class WallpaperApp:
             ]
         )
         self.logger = logging.getLogger(__name__)
+        self.logger.info("Initializing WallpaperApp")
 
         self.preset_manager = PresetManager()
         self.active_preset = self.preset_manager.default_name
@@ -336,6 +340,7 @@ class WallpaperApp:
         self._stop_event = threading.Event()
         self.pid_path = os.path.join(self.app_dir, "wallpaperchanger.pid")
         self._pid_registered = False
+        self._restore_provider_state()
 
     def start(self) -> None:
         self.logger.info(f"Starting Wallpaper Changer (hotkey: {KeyBind})")
@@ -389,13 +394,13 @@ class WallpaperApp:
             while not self._stop_event.is_set():
                 try:
                     if os.path.exists(self.signal_path):
-                        # Signal file exists, trigger wallpaper change
-                        self.logger.info("Signal file detected, triggering wallpaper change")
+                        self.logger.info("Signal file detected, processing command")
+                        payload = self._read_signal_payload()
                         try:
                             os.remove(self.signal_path)
                         except OSError:
                             pass
-                        self.change_wallpaper("gui")
+                        self._handle_signal_payload(payload)
                 except Exception as e:
                     self.logger.error(f"Error monitoring signal file: {e}")
                 time.sleep(0.5)
@@ -404,6 +409,112 @@ class WallpaperApp:
         signal_thread.start()
         self.logger.info("Signal monitor started")
 
+    def _read_signal_payload(self) -> object:
+        try:
+            with open(self.signal_path, "r", encoding="utf-8") as handle:
+                raw = handle.read().strip()
+        except OSError as error:
+            self.logger.error(f"Unable to read signal file: {error}")
+            return "change_wallpaper"
+
+        if not raw:
+            return "change_wallpaper"
+
+        with suppress(json.JSONDecodeError):
+            data = json.loads(raw)
+            return data
+        return raw
+
+    def _handle_signal_payload(self, payload: object) -> None:
+        self.logger.info(f"Received signal payload: {payload}")
+        action = "change_wallpaper"
+        provider_override: Optional[str] = None
+        preset_name: Optional[str] = None
+
+        if isinstance(payload, dict):
+            action = str(payload.get("action") or "change_wallpaper").lower()
+            provider_override = payload.get("provider")
+            preset_name = payload.get("preset")
+        elif isinstance(payload, str):
+            normalized = payload.strip().lower()
+            if normalized in {"", "change", "change_wallpaper"}:
+                action = "change_wallpaper"
+            elif normalized in {"cycle", "cycle-provider", "cycle_provider"}:
+                action = "cycle_provider"
+            elif normalized in {"reset", "reset-provider", "reset_provider"}:
+                action = "reset_provider_rotation"
+            else:
+                action = "change_wallpaper"
+        else:
+            action = "change_wallpaper"
+
+        self.logger.info(f"Parsed action: {action}")
+
+        if action == "change_wallpaper":
+            self.logger.info("GUI command: change wallpaper")
+            self.change_wallpaper("gui", preset_name=preset_name, provider_override=provider_override)
+            return
+
+        if action == "cycle_provider":
+            info = self._advance_provider_sequence(preset_name)
+            if info:
+                sequence_label = " -> ".join(info["sequence"])
+                self.logger.info(
+                    "GUI command: cycle provider (preset=%s, sequence=%s, skipped=%s, next=%s)",
+                    info["preset"],
+                    sequence_label,
+                    info["skipped"],
+                    info["next"],
+                )
+                previous_state = self._load_provider_state()
+                providers_used: List[str] = []
+                results: Optional[List[Dict[str, str]]] = None
+                if isinstance(previous_state, dict):
+                    stored_providers = previous_state.get("providers_used")
+                    if isinstance(stored_providers, list):
+                        providers_used = [str(item) for item in stored_providers]
+                    stored_results = previous_state.get("results")
+                    if isinstance(stored_results, list):
+                        results = [
+                            item for item in stored_results if isinstance(item, dict)
+                        ]
+                note = f"Rotation advanced via GUI cycle; skipped {info['skipped']}, next {info['next']}"
+                self._write_provider_state(info["preset"], "cycle", providers_used, results=results, note=note)
+            else:
+                self.logger.info("GUI command: cycle provider requested but no sequence available.")
+            return
+
+        if action == "reset_provider_rotation":
+            info = self._reset_provider_sequence(preset_name)
+            if info:
+                sequence_label = " -> ".join(info["sequence"])
+                self.logger.info(
+                    "GUI command: reset provider rotation (preset=%s, sequence=%s, next=%s)",
+                    info["preset"],
+                    sequence_label,
+                    info["next"],
+                )
+                previous_state = self._load_provider_state()
+                providers_used: List[str] = []
+                results: Optional[List[Dict[str, str]]] = None
+                if isinstance(previous_state, dict):
+                    stored_providers = previous_state.get("providers_used")
+                    if isinstance(stored_providers, list):
+                        providers_used = [str(item) for item in stored_providers]
+                    stored_results = previous_state.get("results")
+                    if isinstance(stored_results, list):
+                        results = [
+                            item for item in stored_results if isinstance(item, dict)
+                        ]
+                note = f"Rotation reset via GUI; next provider {info['next']}"
+                self._write_provider_state(info["preset"], "reset", providers_used, results=results, note=note)
+            else:
+                self.logger.info("GUI command: reset provider rotation requested but no sequence available.")
+            return
+
+        self.logger.info("GUI command: unrecognized action '%s', triggering wallpaper change.", action)
+        self.change_wallpaper("gui", preset_name=preset_name, provider_override=provider_override)
+
     def set_active_preset(self, preset_name: str) -> None:
         if preset_name == self.active_preset:
             return
@@ -411,8 +522,20 @@ class WallpaperApp:
         self.logger.info(f"Preset switched to '{preset_name}'")
         self.change_wallpaper("preset-switch", preset_name=preset_name)
 
-    def pick_active_provider(self, preset: Preset, fallback_provider: Optional[str] = None) -> str:
-        sequence = []
+    def pick_active_provider(self, preset: Preset) -> str:
+        sequence = self._build_provider_sequence(preset, Provider)
+
+        if not RotateProviders:
+            return sequence[0]
+
+        key = tuple(sequence)
+        current_index = PROVIDER_SEQUENCE_STATE.get(key, 0)
+        provider = sequence[current_index % len(sequence)]
+        PROVIDER_SEQUENCE_STATE[key] = (current_index + 1) % len(sequence)
+        return provider
+
+    def _build_provider_sequence(self, preset: Preset, fallback_provider: Optional[str]) -> List[str]:
+        sequence: List[str] = []
         if preset.providers:
             sequence = [ensure_provider(provider) for provider in preset.providers]
         elif ProvidersSequence:
@@ -420,12 +543,117 @@ class WallpaperApp:
 
         if not sequence:
             sequence = [normalize_provider(fallback_provider)]
+        return sequence
+
+    def _advance_provider_sequence(self, preset_name: Optional[str]) -> Optional[Dict[str, object]]:
+        preset = self.preset_manager.get_preset(preset_name or self.active_preset)
+        sequence = self._build_provider_sequence(preset, Provider)
+        if not sequence:
+            return None
 
         key = tuple(sequence)
         current_index = PROVIDER_SEQUENCE_STATE.get(key, 0)
-        provider = sequence[current_index % len(sequence)]
-        PROVIDER_SEQUENCE_STATE[key] = (current_index + 1) % len(sequence)
-        return provider
+        skipped = sequence[current_index % len(sequence)]
+        next_index = (current_index + 1) % len(sequence)
+        PROVIDER_SEQUENCE_STATE[key] = next_index
+        next_provider = sequence[next_index % len(sequence)]
+        return {
+            "preset": preset.name,
+            "sequence": sequence,
+            "skipped": skipped,
+            "next": next_provider,
+        }
+
+    def _reset_provider_sequence(self, preset_name: Optional[str]) -> Optional[Dict[str, object]]:
+        preset = self.preset_manager.get_preset(preset_name or self.active_preset)
+        sequence = self._build_provider_sequence(preset, Provider)
+        if not sequence:
+            return None
+
+        key = tuple(sequence)
+        PROVIDER_SEQUENCE_STATE[key] = 0
+        next_provider = sequence[0]
+        return {
+            "preset": preset.name,
+            "sequence": sequence,
+            "next": next_provider,
+        }
+
+    def _load_provider_state(self) -> Dict[str, object]:
+        try:
+            with open(self.provider_state_path, "r", encoding="utf-8") as handle:
+                data = json.load(handle)
+            if isinstance(data, dict):
+                return data
+        except (OSError, json.JSONDecodeError):
+            pass
+        return {}
+
+    def _restore_provider_state(self) -> None:
+        state = self._load_provider_state()
+        sequences = state.get("sequences") if isinstance(state, dict) else None
+        if not isinstance(sequences, list):
+            return
+
+        for entry in sequences:
+            if not isinstance(entry, dict):
+                continue
+            raw_sequence = entry.get("sequence")
+            next_index = entry.get("next_index", 0)
+            if not isinstance(raw_sequence, list) or not raw_sequence:
+                continue
+            normalized_sequence: List[str] = []
+            for provider in raw_sequence:
+                try:
+                    normalized_sequence.append(ensure_provider(provider))
+                except RuntimeError:
+                    normalized_sequence = []
+                    break
+            if not normalized_sequence:
+                continue
+            key = tuple(normalized_sequence)
+            if not isinstance(next_index, int):
+                next_index = 0
+            PROVIDER_SEQUENCE_STATE[key] = next_index % len(normalized_sequence)
+
+    def _write_provider_state(
+        self,
+        preset_name: str,
+        trigger: str,
+        providers_used: List[str],
+        *,
+        results: Optional[List[Dict[str, str]]] = None,
+        note: Optional[str] = None,
+    ) -> None:
+        sequences: List[Dict[str, object]] = []
+        for sequence, next_index in PROVIDER_SEQUENCE_STATE.items():
+            if not sequence:
+                continue
+            next_provider = sequence[next_index % len(sequence)]
+            sequences.append(
+                {
+                    "sequence": list(sequence),
+                    "next_index": next_index,
+                    "next_provider": next_provider,
+                    "length": len(sequence),
+                }
+            )
+
+        state: Dict[str, object] = {
+            "timestamp": datetime.utcnow().isoformat(timespec="seconds"),
+            "preset": preset_name,
+            "trigger": trigger,
+            "providers_used": providers_used or [],
+            "results": results or [],
+            "note": note or "",
+            "sequences": sequences,
+        }
+
+        try:
+            with open(self.provider_state_path, "w", encoding="utf-8") as handle:
+                json.dump(state, handle, indent=2)
+        except OSError as error:
+            self.logger.debug(f"Unable to persist provider state: {error}")
 
     def change_wallpaper(
         self,
@@ -434,51 +662,56 @@ class WallpaperApp:
         provider_override: Optional[str] = None,
         use_cache: bool = False,
     ) -> None:
-        preset = self.preset_manager.get_preset(preset_name or self.active_preset)
-        provider = (
-            ensure_provider(provider_override)
-            if provider_override
-            else self.pick_active_provider(preset, fallback_provider=Provider)
-        )
-
-        self.logger.info(f"Wallpaper change triggered by: {trigger}")
-        manager = self._create_desktop_controller()
-        monitors = []
-        if manager:
-            try:
-                monitors = manager.enumerate_monitors()
-            except OSError as error:
-                self.logger.error(f"Per-monitor wallpaper initialization failed: {error}")
-                monitors = []
-
-        if not monitors:
-            try:
-                monitors = enumerate_monitors_user32()
-            except OSError as error:
-                self.logger.error(f"Monitor enumeration via user32 failed: {error}")
-                monitors = []
-
-        tasks = self._build_tasks(monitors, preset, provider)
-
-        if use_cache and self.apply_cached_wallpaper(trigger):
-            return
-
-        results: List[Tuple[str, str]] = []
+        self.logger.info(f"Changing wallpaper (trigger: {trigger})")
         try:
-            if manager and len(tasks) > 1:
-                for index, task in enumerate(tasks):
-                    line, used_provider = self._process_task(task, index, manager)
-                    results.append((line, used_provider))
-            elif len(tasks) > 1:
-                self.logger.info("Per-monitor API unavailable; composing a span wallpaper instead.")
-                results.extend(self._apply_span(tasks))
+            preset = self.preset_manager.get_preset(preset_name or self.active_preset)
+            if provider_override:
+                provider = normalize_provider(provider_override)
+            elif RotateProviders:
+                provider = self.pick_active_provider(preset)
             else:
-                line, used_provider = self._process_single(tasks[0])
-                results.append((line, used_provider))
-        finally:
+                provider = normalize_provider(Provider)
+
+            self.logger.info(f"Wallpaper change triggered by: {trigger}")
+            manager = self._create_desktop_controller()
+            monitors = []
             if manager:
-                manager.close()
-            self.cache_manager.prune()
+                try:
+                    monitors = manager.enumerate_monitors()
+                except OSError as error:
+                    self.logger.error(f"Per-monitor wallpaper initialization failed: {error}")
+                    monitors = []
+
+            if not monitors:
+                try:
+                    monitors = enumerate_monitors_user32()
+                except OSError as error:
+                    self.logger.error(f"Monitor enumeration via user32 failed: {error}")
+                    monitors = []
+
+            tasks = self._build_tasks(monitors, preset, provider)
+
+            if use_cache and self.apply_cached_wallpaper(trigger):
+                return
+
+            results: List[Tuple[str, str]] = []
+            try:
+                if manager and len(tasks) > 1:
+                    for index, task in enumerate(tasks):
+                        line, used_provider = self._process_task(task, index, manager)
+                        results.append((line, used_provider))
+                elif len(tasks) > 1:
+                    self.logger.info("Per-monitor API unavailable; composing a span wallpaper instead.")
+                    results.extend(self._apply_span(tasks))
+                else:
+                    line, used_provider = self._process_single(tasks[0])
+                    results.append((line, used_provider))
+            finally:
+                if manager:
+                    manager.close()
+                self.cache_manager.prune()
+        except Exception as e:
+            self.logger.exception(f"Error changing wallpaper: {e}")
 
         providers_used = sorted({prov for _, prov in results}) or [provider]
         self.logger.info(
@@ -487,6 +720,13 @@ class WallpaperApp:
         )
         for line, _ in results:
             self.logger.info(f" - {line}")
+
+        self._write_provider_state(
+            preset.name,
+            trigger,
+            providers_used,
+            results=[{"label": line, "provider": prov} for line, prov in results],
+        )
 
     def apply_cached_wallpaper(self, trigger: str) -> bool:
         if not self.cache_manager.enable_rotation:
@@ -569,7 +809,7 @@ class WallpaperApp:
         for index, monitor in enumerate(monitors or [{}]):
             override = self.preset_manager.get_monitor_override(index)
             monitor_preset = self.preset_manager.get_preset(override.get("preset") or preset.name)
-            monitor_provider = normalize_provider(override.get("provider"), fallback=provider)
+            monitor_provider = normalize_provider(override.get("provider") or provider)
 
             query_override = override.get("query") or None
             query = self.preset_manager.pick_query(monitor_preset, query_override)
@@ -757,9 +997,9 @@ class WallpaperApp:
     def _fetch_wallhaven(self, task: Dict) -> Tuple[str, str]:
         settings = task["wallhaven"]
         sorting = normalize_wallhaven_sorting(settings.get("sorting"))
+        api_key = normalize_string(ApiKey)
         params = {
             "sorting": sorting,
-            "apikey": normalize_string(ApiKey),
             "purity": normalize_string(settings.get("purity")),
             "q": task["query"],
             "resolutions": normalize_string(settings.get("resolutions")),
@@ -768,6 +1008,8 @@ class WallpaperApp:
             "ratios": normalize_string(settings.get("ratios")),
             "categories": normalize_string(settings.get("categories")),
         }
+        if api_key:
+            params["apikey"] = api_key
         top_range = normalize_wallhaven_top_range(settings.get("top_range"))
         if sorting == "toplist" and top_range:
             params["topRange"] = top_range
@@ -775,38 +1017,71 @@ class WallpaperApp:
         params = {key: value for key, value in params.items() if value}
         params["order"] = "desc"
 
-        response = requests.get("https://wallhaven.cc/api/v1/search", params=params, timeout=REQUEST_TIMEOUT)
-        response.raise_for_status()
-        data = response.json()
-        wallpapers = data.get("data", [])
+        attempts: List[Tuple[Dict[str, str], List[str]]] = []
+        base_params = dict(params)
+        base_notes: List[str] = []
+        attempts.append((base_params, base_notes))
 
-        fallback_triggered = False
-        if not wallpapers and sorting != "random":
-            fallback_params = dict(params)
-            fallback_params["sorting"] = "random"
-            fallback_params.pop("topRange", None)
-            fallback_response = requests.get(
-                "https://wallhaven.cc/api/v1/search", params=fallback_params, timeout=REQUEST_TIMEOUT
-            )
-            fallback_response.raise_for_status()
-            data = fallback_response.json()
+        def drop_key(key: str) -> Callable[[Dict[str, str]], None]:
+            return lambda payload, key=key: payload.pop(key, None)
+
+        transforms: List[Tuple[str, Callable[[Dict[str, str]], None]]] = []
+        if base_params.get("colors"):
+            transforms.append(("drop colors", drop_key("colors")))
+        if base_params.get("topRange"):
+            transforms.append(("drop topRange", drop_key("topRange")))
+        if base_params.get("ratios"):
+            transforms.append(("drop ratios", drop_key("ratios")))
+        if base_params.get("atleast"):
+            transforms.append(("relax min resolution", drop_key("atleast")))
+        if sorting != "random":
+            def set_random(payload: Dict[str, str]) -> None:
+                payload["sorting"] = "random"
+                payload.pop("topRange", None)
+            transforms.append(("switch to random", set_random))
+
+        current_params = base_params
+        current_notes: List[str] = []
+        for description, mutator in transforms:
+            updated = dict(current_params)
+            mutator(updated)
+            current_params = updated
+            current_notes = current_notes + [description]
+            attempts.append((dict(current_params), list(current_notes)))
+
+        wallpapers: List[Dict] = []
+        chosen_notes: List[str] = []
+        chosen_params: Optional[Dict[str, str]] = None
+
+        for attempt_params, notes in attempts:
+            try:
+                response = requests.get(
+                    "https://wallhaven.cc/api/v1/search", params=attempt_params, timeout=REQUEST_TIMEOUT
+                )
+                response.raise_for_status()
+                data = response.json()
+            except requests.RequestException as error:
+                self.logger.warning(f"Wallhaven request failed ({', '.join(notes) or 'default'}): {error}")
+                continue
+
             wallpapers = data.get("data", [])
             if wallpapers:
-                fallback_triggered = True
-                sorting = "random"
-                params = fallback_params
+                chosen_params = attempt_params
+                chosen_notes = notes
+                break
 
-        if not wallpapers:
+        if not wallpapers or not chosen_params:
+            attempted = ["default" if not notes else " -> ".join(notes) for _, notes in attempts]
             raise RuntimeError(
-                f"Failed to retrieve a wallpaper from Wallhaven (sorting={settings.get('sorting')}, "
-                f"topRange={settings.get('top_range')}, query={task['query']})."
+                "Failed to retrieve a wallpaper from Wallhaven "
+                f"(query='{task['query']}', attempts={attempted})."
             )
 
-        # Filter for landscape orientation if ratios specified (width >= height)
-        ratios = settings.get("ratios", "")
-        if ratios and ("16x9" in ratios or "21x9" in ratios or "16x10" in ratios):
+        active_ratios = chosen_params.get("ratios", "")
+        if active_ratios and ("16x9" in active_ratios or "21x9" in active_ratios or "16x10" in active_ratios):
             landscape_wallpapers = [
-                w for w in wallpapers
+                w
+                for w in wallpapers
                 if w.get("dimension_x", 0) >= w.get("dimension_y", 0)
             ]
             if landscape_wallpapers:
@@ -814,13 +1089,19 @@ class WallpaperApp:
                 self.logger.info(f"Filtered {len(wallpapers)} landscape wallpapers from Wallhaven")
 
         choice = random.choice(wallpapers)
-        meta = [sorting]
-        if params.get("topRange"):
-            meta.append(f"topRange={params['topRange']}")
-        if fallback_triggered:
-            meta.append(f"fallback from {settings.get('sorting')}")
+        meta: List[str] = [chosen_params.get("sorting", sorting)]
+        if chosen_params.get("topRange"):
+            meta.append(f"topRange={chosen_params['topRange']}")
+        if chosen_notes:
+            meta.append(f"fallback: {' -> '.join(chosen_notes)}")
 
         source_info = f"Wallhaven ({', '.join(meta)}) | {choice.get('id', 'unknown')} ({choice.get('url', 'n/a')})"
+        if chosen_notes:
+            self.logger.info(
+                "Wallhaven fallback applied for query '%s': %s",
+                task["query"],
+                " -> ".join(chosen_notes),
+            )
         return choice["path"], source_info
 
     def _fetch_pexels(self, task: Dict) -> Tuple[str, str]:
@@ -880,21 +1161,18 @@ class WallpaperApp:
         return image_url, source_info
 
     def _resolve_wallpaper(self, task: Dict) -> Tuple[str, str, Dict]:
-        candidates = task.get("provider_candidates") or [task.get("provider")]
-        last_error: Optional[Exception] = None
-        for candidate in candidates:
-            if not candidate:
-                continue
-            task["provider"] = candidate
+        provider_candidates = task.get("provider_candidates", [task["provider"]])
+        
+        for provider in provider_candidates:
             try:
+                task["provider"] = provider
                 url, source_info, metadata = self._fetch_wallpaper(task)
-                metadata["provider"] = candidate
+                metadata["provider"] = provider
                 return url, source_info, metadata
             except Exception as exc:
-                last_error = exc
-        if last_error:
-            raise last_error
-        raise RuntimeError("No providers available for wallpaper download.")
+                self.logger.error(f"Failed to fetch wallpaper from {provider}: {exc}")
+
+        raise RuntimeError(f"Failed to retrieve wallpaper from any of the available providers: {provider_candidates}")
 
     def _download_wallpaper(self, url: str, target_path: str) -> None:
         response = requests.get(url, stream=True, timeout=REQUEST_TIMEOUT)

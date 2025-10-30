@@ -12,6 +12,9 @@ Provider = "wallhaven"
 # Optional ordered list of providers to rotate through across updates
 ProvidersSequence = ["wallhaven", "pexels"]
 
+# Enable or disable provider rotation
+RotateProviders = True
+
 # Enter your Wallhaven API Key from https://wallhaven.cc/settings/account
 # Or set it in the .env file as WALLHAVEN_API_KEY
 ApiKey = os.getenv("WALLHAVEN_API_KEY", "")
@@ -65,8 +68,8 @@ Presets = [
         "title": "Workspace Focus",
         "description": "Clean and minimal wallpapers for productivity.",
         "providers": ["wallhaven", "pexels"],
-        "queries": ["workspace", "minimalist desk"],
-        "exclude": ["anime"],
+        "queries": ["technology"],
+        "exclude": [],
         "colors": ["2b4450"],
         "ratios": ["16x9", "21x9"],
         "purity": "100",
@@ -86,7 +89,7 @@ Presets = [
         "title": "Relaxing Nature",
         "description": "Calming landscapes for breaks.",
         "providers": ["wallhaven", "pexels"],
-        "queries": ["serene landscape", "calm forest"],
+        "queries": ["nature", "landscape"],
         "exclude": ["city", "crowd"],
         "colors": ["004e92", "263238"],
         "ratios": ["21x9", "16x10"],
@@ -118,8 +121,8 @@ Monitors = [
         "query": "",
         "screen_resolution": "1920x1080",
         "purity": "100",
-        "wallhaven_sorting": "toplist",
-        "wallhaven_top_range": "1w",
+        "wallhaven_sorting": "random",
+        "wallhaven_top_range": "1M",
     },
     {
         "name": "Ultrawide",

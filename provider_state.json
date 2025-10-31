@@ -1,5 +1,5 @@
 {
-  "timestamp": "2025-10-30T16:59:00",
+  "timestamp": "2025-10-31T07:01:57",
   "preset": "workspace",
   "trigger": "scheduler",
   "providers_used": [
@@ -7,11 +7,11 @@
   ],
   "results": [
     {
-      "label": "Full HD: Wallhaven (random, fallback: drop colors) | 1p176w (https://wallhaven.cc/w/1p176w)",
+      "label": "Full HD: Wallhaven (random, fallback: drop colors) | 3zweqy (https://wallhaven.cc/w/3zweqy)",
       "provider": "wallhaven"
     },
     {
-      "label": "Ultrawide: Wallhaven (toplist, fallback: drop colors -> drop topRange -> drop ratios) | 8g5p52 (https://wallhaven.cc/w/8g5p52)",
+      "label": "Ultrawide: Wallhaven (toplist, fallback: drop colors -> drop topRange) | 21yz9m (https://wallhaven.cc/w/21yz9m)",
       "provider": "wallhaven"
     }
   ],

@@ -13,7 +13,7 @@ Provider = "reddit"
 ProvidersSequence = ["wallhaven", "pexels", "reddit"]
 
 # Enable or disable provider rotation
-RotateProviders = True
+RotateProviders = False
 
 # Enter your Wallhaven API Key from https://wallhaven.cc/settings/account
 # Or set it in the .env file as WALLHAVEN_API_KEY
@@ -55,7 +55,7 @@ WallhavenTopRange = "1M"
 
 # Cache settings: directory (blank for default), max_items (int), enable_offline_rotation (bool)
 CacheSettings = {
-    "directory": r"C:\Users\EmanueleO\WallpaperChangerCache",
+    "directory": "C:\Users\EmanueleO\WallpaperChangerCache",
     "max_items": 60,
     "enable_offline_rotation": True,
 }

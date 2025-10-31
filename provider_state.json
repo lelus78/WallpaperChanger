@@ -1,18 +1,18 @@
 {
-  "timestamp": "2025-10-31T07:01:57",
+  "timestamp": "2025-10-31T15:01:07",
   "preset": "workspace",
-  "trigger": "scheduler",
+  "trigger": "hotkey",
   "providers_used": [
-    "wallhaven"
+    "reddit"
   ],
   "results": [
     {
-      "label": "Full HD: Wallhaven (random, fallback: drop colors) | 3zweqy (https://wallhaven.cc/w/3zweqy)",
-      "provider": "wallhaven"
+      "label": "Full HD: Reddit r/ultrahdwallpapers (hot) | Deep Space [3840x2160] (https://reddit.com/r/ultrahdwallpapers/comments/1i5433z/deep_space_3840x2160/)",
+      "provider": "reddit"
     },
     {
-      "label": "Ultrawide: Wallhaven (toplist, fallback: drop colors -> drop topRange) | 21yz9m (https://wallhaven.cc/w/21yz9m)",
-      "provider": "wallhaven"
+      "label": "Ultrawide: Reddit r/NatureIsFuckingLit (top/week) | \ud83d\udd25 Roseate spoonbill (https://reddit.com/r/NatureIsFuckingLit/comments/1og0c4x/roseate_spoonbill/)",
+      "provider": "reddit"
     }
   ],
   "note": "",
@@ -32,8 +32,8 @@
         "pexels",
         "reddit"
       ],
-      "next_index": 1,
-      "next_provider": "pexels",
+      "next_index": 0,
+      "next_provider": "wallhaven",
       "length": 3
     }
   ]

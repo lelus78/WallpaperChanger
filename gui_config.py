@@ -1,6 +1,7 @@
 import ast
 import json
 import os
+import pprint
 import tkinter as tk
 from pathlib import Path
 from tkinter import ttk, messagebox, scrolledtext
@@ -68,6 +69,9 @@ class WallpaperConfigGUI:
         self.sort_by = tk.StringVar(value="Newest First")
 
         self._load_config()
+
+        self.playlists_data: List[Dict[str, Any]] = list(self.config_data.get("Playlists") or [])
+        self.weather_settings: Dict[str, Any] = dict(self.config_data.get("WeatherRotationSettings") or {})
 
         # Check and start main app if not running
         self._ensure_main_app_running()
@@ -537,6 +541,20 @@ class WallpaperConfigGUI:
             with open(self.config_path, "r", encoding="utf-8") as f:
                 content = f.read()
 
+            # Import config module directly to handle os.getenv() and other dynamic values
+            import importlib.util
+            spec = importlib.util.spec_from_file_location("config", self.config_path)
+            if spec and spec.loader:
+                config_module = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(config_module)
+
+                # Get WeatherRotationSettings from the loaded module
+                weather_settings = getattr(config_module, "WeatherRotationSettings", {})
+                playlists = getattr(config_module, "Playlists", [])
+            else:
+                weather_settings = {}
+                playlists = []
+
             # Parse basic settings (simplified parsing)
             self.config_data = {
                 "Provider": self._extract_value(content, "Provider"),
@@ -556,6 +574,9 @@ class WallpaperConfigGUI:
                 "CacheOfflineRotation": self._extract_dict_value(content, "CacheSettings", "enable_offline_rotation"),
                 "RedditSettings": self._extract_dict_literal(content, "RedditSettings"),
                 "Monitors": self._extract_monitors(content),
+                "DefaultPlaylist": self._extract_value(content, "DefaultPlaylist"),
+                "Playlists": playlists,
+                "WeatherRotationSettings": weather_settings,
             }
         except Exception as e:
             messagebox.showerror("Error", f"Failed to load config: {e}")
@@ -633,6 +654,19 @@ class WallpaperConfigGUI:
             print(f"Error extracting monitors: {e}")
             return []
 
+    def _extract_literal(self, content: str, name: str, default: Optional[Any] = None) -> Optional[Any]:
+        """Extract a Python literal assigned to the given name using AST parsing."""
+        try:
+            module = ast.parse(content)
+            for node in module.body:
+                if isinstance(node, ast.Assign):
+                    for target in node.targets:
+                        if isinstance(target, ast.Name) and target.id == name:
+                            return ast.literal_eval(node.value)
+        except Exception as error:
+            print(f"Unable to extract literal for {name}: {error}")
+        return default
+
     def _extract_dict_literal(self, content: str, key: str) -> Dict[str, Any]:
         """Extract dictionary literal assigned to key using AST parsing."""
         try:
@@ -709,7 +743,12 @@ class WallpaperConfigGUI:
         self.notebook.add(self.advanced_frame, text="🔧 Advanced")
         self._create_advanced_tab()
 
-        # Tab 4: Logs
+        # Tab 4: Help & Features
+        self.help_frame = ttk.Frame(self.notebook)
+        self.notebook.add(self.help_frame, text="📚 Help & Features")
+        self._create_help_tab()
+
+        # Tab 5: Logs
         self.logs_frame = ttk.Frame(self.notebook)
         self.notebook.add(self.logs_frame, text="📋 Logs")
         self._create_logs_tab()
@@ -1114,6 +1153,7 @@ class WallpaperConfigGUI:
         env_path = Path(__file__).parent / '.env'
         current_wallhaven_key = ""
         current_pexels_key = ""
+        current_openweather_key = ""
 
         if env_path.exists():
             with open(env_path, 'r', encoding='utf-8') as f:
@@ -1122,6 +1162,8 @@ class WallpaperConfigGUI:
                         current_wallhaven_key = line.split('=', 1)[1].strip()
                     elif line.startswith('PEXELS_API_KEY='):
                         current_pexels_key = line.split('=', 1)[1].strip()
+                    elif line.startswith('OPENWEATHER_API_KEY='):
+                        current_openweather_key = line.split('=', 1)[1].strip()
 
         ttk.Label(api_group, text="Wallhaven API Key:").grid(row=0, column=0, sticky=tk.W, pady=5, padx=5)
         self.wallhaven_key_var = tk.StringVar(value=current_wallhaven_key)
@@ -1137,7 +1179,18 @@ class WallpaperConfigGUI:
         ttk.Button(api_group, text="👁", width=3,
                   command=lambda: self._toggle_password_visibility(pexels_entry)).grid(row=1, column=2, padx=2)
 
-        ttk.Button(api_group, text="💾 Save API Keys", command=self._save_api_keys).grid(row=2, column=1, pady=10, sticky=tk.E)
+        ttk.Label(api_group, text="OpenWeatherMap API Key:").grid(row=2, column=0, sticky=tk.W, pady=5, padx=5)
+        self.weather_api_key_var = tk.StringVar(value=current_openweather_key)
+        openweather_entry = ttk.Entry(api_group, textvariable=self.weather_api_key_var, width=50, show="*")
+        openweather_entry.grid(row=2, column=1, pady=5, padx=5)
+        ttk.Button(api_group, text="👁", width=3,
+                  command=lambda: self._toggle_password_visibility(openweather_entry)).grid(row=2, column=2, padx=2)
+
+        # Info label for OpenWeather
+        ttk.Label(api_group, text="🌤️ Free tier: 1000 calls/day · Get it at: https://home.openweathermap.org/api_keys",
+                 foreground=self.COLORS['text_muted'], font=('Segoe UI', 8)).grid(row=3, column=0, columnspan=3, sticky=tk.W, padx=5, pady=(0, 5))
+
+        ttk.Button(api_group, text="💾 Save API Keys", command=self._save_api_keys).grid(row=4, column=1, pady=10, sticky=tk.E)
 
         # Folders Configuration Section
         folders_group = ttk.LabelFrame(scrollable_frame, text="Folders Configuration", padding=10)
@@ -1205,6 +1258,251 @@ class WallpaperConfigGUI:
         ttk.Combobox(preset_group, textvariable=self.default_preset_var,
                     values=preset_names, width=30).grid(row=0, column=1, pady=5, padx=5, sticky=tk.W)
 
+        # Playlist & Thematic Rotation Section
+        playlist_group = ttk.LabelFrame(scrollable_frame, text="Playlists & Thematic Rotation", padding=10)
+        playlist_group.pack(fill=tk.X, padx=10, pady=5)
+
+        raw_default_playlist = (self.config_data.get("DefaultPlaylist") or "").strip()
+        seen_playlist_names = set()
+        playlist_names: List[str] = []
+        for item in self.playlists_data:
+            if isinstance(item, dict):
+                name = str(item.get("name", "")).strip()
+                if name and name not in seen_playlist_names:
+                    playlist_names.append(name)
+                    seen_playlist_names.add(name)
+        playlist_choices = ["(None)"] + playlist_names
+        default_playlist_display = raw_default_playlist if raw_default_playlist in playlist_names else "(None)"
+        self.default_playlist_display_var = tk.StringVar(value=default_playlist_display)
+
+        ttk.Label(playlist_group, text="Default Playlist at Startup:").grid(row=0, column=0, sticky=tk.W, pady=5, padx=5)
+        self.default_playlist_combo = ttk.Combobox(
+            playlist_group,
+            textvariable=self.default_playlist_display_var,
+            values=playlist_choices,
+            width=30,
+            state="readonly",
+        )
+        self.default_playlist_combo.grid(row=0, column=1, pady=5, padx=5, sticky=tk.W)
+
+        if playlist_names:
+            summary_lines = [f"- {name}" for name in playlist_names]
+            summary_text = "\n".join(summary_lines)
+        else:
+            summary_text = "No playlists defined yet."
+        self.playlist_summary_label = ttk.Label(
+            playlist_group,
+            text=summary_text,
+            justify=tk.LEFT,
+            foreground=self.COLORS['text_secondary'],
+        )
+        self.playlist_summary_label.grid(row=1, column=0, columnspan=2, sticky=tk.W, pady=(0, 5), padx=5)
+
+        ttk.Button(
+            playlist_group,
+            text="Edit Playlist Definitions",
+            command=self._focus_playlists_editor,
+        ).grid(row=2, column=0, columnspan=2, sticky=tk.W, pady=5, padx=5)
+
+        # Weather Rotation Section
+        weather_group = ttk.LabelFrame(scrollable_frame, text="Weather-Based Rotation", padding=10)
+        weather_group.pack(fill=tk.X, padx=10, pady=5)
+
+        weather_location = self.weather_settings.get("location", {}) if isinstance(self.weather_settings, dict) else {}
+        weather_apply_on = self.weather_settings.get("apply_on", []) if isinstance(self.weather_settings, dict) else []
+
+        self.weather_enabled_var = tk.BooleanVar(value=bool(self.weather_settings.get("enabled", False)))
+        self.weather_provider_var = tk.StringVar(value=str(self.weather_settings.get("provider", "openweathermap") or "openweathermap"))
+        # weather_api_key_var already initialized in API Keys section above - use .env value if available, otherwise config
+        if not self.weather_api_key_var.get() and self.weather_settings.get("api_key"):
+            self.weather_api_key_var.set(str(self.weather_settings.get("api_key", "") or ""))
+        self.weather_refresh_var = tk.IntVar(value=int(self.weather_settings.get("refresh_minutes", 30) or 30))
+        self.weather_units_var = tk.StringVar(value=str(self.weather_settings.get("units", "metric") or "metric"))
+        self.weather_city_var = tk.StringVar(value=str(weather_location.get("city", "") or ""))
+        self.weather_country_var = tk.StringVar(value=str(weather_location.get("country", "") or ""))
+        self.weather_lat_var = tk.StringVar(value=str(weather_location.get("latitude", "") or ""))
+        self.weather_lon_var = tk.StringVar(value=str(weather_location.get("longitude", "") or ""))
+
+        # Info banner at top
+        info_banner = tk.Frame(weather_group, bg=self.COLORS['bg_tertiary'], relief=tk.FLAT, pady=8, padx=10)
+        info_banner.grid(row=0, column=0, columnspan=3, sticky=tk.EW, pady=(0, 10))
+
+        tk.Label(info_banner,
+                text="🌤️ OpenWeatherMap è GRATUITO fino a 1000 chiamate/giorno (più che sufficiente!)",
+                bg=self.COLORS['bg_tertiary'],
+                fg=self.COLORS['success'],
+                font=('Segoe UI', 9, 'bold')).pack(anchor=tk.W)
+
+        tk.Label(info_banner,
+                text="⏰ IMPORTANTE: Le nuove API key possono impiegare fino a 2 ore per attivarsi!",
+                bg=self.COLORS['bg_tertiary'],
+                fg=self.COLORS['warning'],
+                font=('Segoe UI', 8, 'bold')).pack(anchor=tk.W, pady=(3, 0))
+
+        tk.Label(info_banner,
+                text="Ottieni la tua API key gratuita qui:",
+                bg=self.COLORS['bg_tertiary'],
+                fg=self.COLORS['text_secondary'],
+                font=('Segoe UI', 8)).pack(anchor=tk.W, pady=(3, 0))
+
+        link_frame = tk.Frame(info_banner, bg=self.COLORS['bg_tertiary'])
+        link_frame.pack(anchor=tk.W)
+
+        tk.Label(link_frame,
+                text="https://home.openweathermap.org/api_keys",
+                bg=self.COLORS['bg_tertiary'],
+                fg=self.COLORS['accent'],
+                font=('Segoe UI', 8, 'underline'),
+                cursor='hand2').pack(side=tk.LEFT)
+
+        def open_weather_link(event):
+            import webbrowser
+            webbrowser.open("https://home.openweathermap.org/api_keys")
+
+        link_frame.winfo_children()[0].bind("<Button-1>", open_weather_link)
+
+        ttk.Checkbutton(
+            weather_group,
+            text="Enable weather-based wallpaper rotation",
+            variable=self.weather_enabled_var,
+        ).grid(row=1, column=0, columnspan=2, sticky=tk.W, pady=5, padx=5)
+
+        ttk.Label(weather_group, text="API Key:").grid(row=2, column=0, sticky=tk.W, pady=5, padx=5)
+        api_entry = ttk.Entry(weather_group, textvariable=self.weather_api_key_var, width=32, show="*")
+        api_entry.grid(row=2, column=1, pady=5, padx=5, sticky=tk.W)
+        ttk.Button(weather_group, text="👁", width=3,
+                  command=lambda: self._toggle_password_visibility(api_entry)).grid(row=2, column=2, padx=2)
+
+        # Test button - prominent and colorful
+        test_btn_frame = tk.Frame(weather_group, bg=self.COLORS['bg_secondary'])
+        test_btn_frame.grid(row=3, column=0, columnspan=3, pady=10, padx=5, sticky=tk.EW)
+
+        self.test_weather_btn = tk.Button(test_btn_frame,
+                              text="🧪 TEST WEATHER CONNECTION",
+                              bg=self.COLORS['warning'],
+                              fg='#1e1e2e',
+                              font=('Segoe UI', 10, 'bold'),
+                              relief=tk.FLAT,
+                              cursor='hand2',
+                              padx=20,
+                              pady=10,
+                              command=self._test_weather_connection)
+        self.test_weather_btn.pack(fill=tk.X)
+
+        # Weather status label
+        self.weather_status_label = tk.Label(test_btn_frame,
+                                            text="",
+                                            bg=self.COLORS['bg_secondary'],
+                                            fg=self.COLORS['text_primary'],
+                                            font=('Segoe UI', 9),
+                                            wraplength=600,
+                                            justify=tk.LEFT)
+        self.weather_status_label.pack(pady=(5, 0))
+
+        ttk.Label(weather_group, text="Location (City):").grid(row=4, column=0, sticky=tk.W, pady=5, padx=5)
+        location_quick = ttk.Frame(weather_group)
+        location_quick.grid(row=4, column=1, columnspan=2, sticky=tk.W, pady=5, padx=5)
+        ttk.Entry(location_quick, textvariable=self.weather_city_var, width=18).pack(side=tk.LEFT)
+        ttk.Label(location_quick, text="Country:").pack(side=tk.LEFT, padx=(10, 2))
+        ttk.Entry(location_quick, textvariable=self.weather_country_var, width=8).pack(side=tk.LEFT)
+
+        ttk.Label(weather_group, text="Refresh interval (minutes):").grid(row=5, column=0, sticky=tk.W, pady=5, padx=5)
+        ttk.Spinbox(weather_group, from_=5, to=180, increment=5, textvariable=self.weather_refresh_var, width=10).grid(row=5, column=1, pady=5, padx=5, sticky=tk.W)
+
+        ttk.Label(weather_group, text="Units:").grid(row=6, column=0, sticky=tk.W, pady=5, padx=5)
+        ttk.Combobox(
+            weather_group,
+            textvariable=self.weather_units_var,
+            values=["metric", "imperial", "standard"],
+            state="readonly",
+            width=15,
+        ).grid(row=6, column=1, pady=5, padx=5, sticky=tk.W)
+
+        # Advanced location (optional - latitude/longitude)
+        ttk.Label(weather_group, text="Advanced location (optional):").grid(row=7, column=0, sticky=tk.W, pady=(10, 2), padx=5)
+        advanced_loc = ttk.Frame(weather_group)
+        advanced_loc.grid(row=7, column=1, columnspan=2, sticky=tk.W, pady=(10, 2), padx=5)
+        ttk.Label(advanced_loc, text="Lat:").pack(side=tk.LEFT)
+        ttk.Entry(advanced_loc, textvariable=self.weather_lat_var, width=12).pack(side=tk.LEFT, padx=(2, 8))
+        ttk.Label(advanced_loc, text="Lon:").pack(side=tk.LEFT)
+        ttk.Entry(advanced_loc, textvariable=self.weather_lon_var, width=12).pack(side=tk.LEFT, padx=2)
+
+        ttk.Label(weather_group, text="Apply on triggers:").grid(row=8, column=0, sticky=tk.W, pady=5, padx=5)
+        triggers_frame = ttk.Frame(weather_group)
+        triggers_frame.grid(row=8, column=1, columnspan=2, sticky=tk.W, pady=5, padx=5)
+
+        self.weather_apply_on_vars: Dict[str, tk.BooleanVar] = {}
+        trigger_options = ["startup", "scheduler", "hotkey", "tray", "gui"]
+        for idx, trigger in enumerate(trigger_options):
+            var = tk.BooleanVar(value=trigger in weather_apply_on)
+            self.weather_apply_on_vars[trigger] = var
+            ttk.Checkbutton(triggers_frame, text=trigger.title(), variable=var).grid(row=0, column=idx, padx=4, sticky=tk.W)
+
+        # Simple preset/playlist selection for weather
+        ttk.Label(weather_group, text="When weather changes, use:").grid(row=9, column=0, sticky=tk.W, pady=(10, 5), padx=5)
+        weather_mode_frame = ttk.Frame(weather_group)
+        weather_mode_frame.grid(row=9, column=1, columnspan=2, sticky=tk.W, pady=(10, 5), padx=5)
+
+        self.weather_simple_mode_var = tk.StringVar(value="disabled")
+        ttk.Radiobutton(weather_mode_frame, text="Disabled (manual config)", variable=self.weather_simple_mode_var, value="disabled").pack(anchor=tk.W)
+        ttk.Radiobutton(weather_mode_frame, text="Simple mode (coming soon)", variable=self.weather_simple_mode_var, value="simple", state=tk.DISABLED).pack(anchor=tk.W)
+
+        ttk.Label(
+            weather_group,
+            text="💡 For advanced weather→preset mapping, edit the Weather Conditions section below",
+            foreground=self.COLORS['text_muted'],
+            justify=tk.LEFT,
+            font=('Segoe UI', 8),
+        ).grid(row=10, column=0, columnspan=3, sticky=tk.W, pady=(5, 0), padx=5)
+
+        # Playlist Definitions Editor
+        playlists_editor_group = ttk.LabelFrame(scrollable_frame, text="Playlist Definitions (Advanced)", padding=10)
+        playlists_editor_group.pack(fill=tk.BOTH, padx=10, pady=5, expand=True)
+
+        ttk.Label(
+            playlists_editor_group,
+            text="Use Python syntax (lists/dicts) to customise thematic playlists.",
+            justify=tk.LEFT,
+        ).pack(anchor=tk.W, padx=5, pady=(0, 5))
+
+        self.playlists_text = scrolledtext.ScrolledText(
+            playlists_editor_group,
+            height=12,
+            wrap=tk.WORD,
+            font=('Consolas', 10),
+        )
+        self.playlists_text.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+        self.playlists_text.insert('1.0', self._format_python_literal(self.playlists_data or []))
+
+        playlist_controls = ttk.Frame(playlists_editor_group)
+        playlist_controls.pack(anchor=tk.E, padx=5, pady=(0, 5))
+        ttk.Button(playlist_controls, text="Format", command=self._format_playlists_text).pack(side=tk.LEFT, padx=3)
+        ttk.Button(playlist_controls, text="Reset", command=self._reset_playlists_text).pack(side=tk.LEFT, padx=3)
+
+        # Weather Conditions Editor
+        weather_editor_group = ttk.LabelFrame(scrollable_frame, text="Weather Conditions Mapping", padding=10)
+        weather_editor_group.pack(fill=tk.BOTH, padx=10, pady=5, expand=True)
+
+        ttk.Label(
+            weather_editor_group,
+            text="Map weather conditions to playlists or presets (Python dict).",
+            justify=tk.LEFT,
+        ).pack(anchor=tk.W, padx=5, pady=(0, 5))
+
+        self.weather_conditions_text = scrolledtext.ScrolledText(
+            weather_editor_group,
+            height=10,
+            wrap=tk.WORD,
+            font=('Consolas', 10),
+        )
+        self.weather_conditions_text.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+        self.weather_conditions_text.insert('1.0', self._format_python_literal((self.weather_settings.get('conditions') if isinstance(self.weather_settings, dict) else {}) or {}))
+
+        weather_controls = ttk.Frame(weather_editor_group)
+        weather_controls.pack(anchor=tk.E, padx=5, pady=(0, 5))
+        ttk.Button(weather_controls, text="Format", command=self._format_weather_conditions_text).pack(side=tk.LEFT, padx=3)
+        ttk.Button(weather_controls, text="Reset", command=self._reset_weather_conditions_text).pack(side=tk.LEFT, padx=3)
+
         # Info Section
         info_group = ttk.LabelFrame(scrollable_frame, text="ℹ️ Information", padding=10)
         info_group.pack(fill=tk.X, padx=10, pady=5)
@@ -1217,6 +1515,269 @@ class WallpaperConfigGUI:
             "• All changes require clicking 'Save Configuration' at the bottom"
         )
         ttk.Label(info_group, text=info_text, font=("Arial", 9), justify=tk.LEFT).pack(anchor=tk.W, padx=5, pady=5)
+
+    def _create_help_tab(self) -> None:
+        """Create help tab with detailed explanations of features"""
+        # Create canvas with scrollbar
+        canvas = tk.Canvas(self.help_frame, bg=self.COLORS['bg_primary'], highlightthickness=0)
+        scrollbar = ttk.Scrollbar(self.help_frame, orient="vertical", command=canvas.yview)
+        scrollable_frame = ttk.Frame(canvas)
+
+        scrollable_frame.bind(
+            "<Configure>",
+            lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
+        )
+
+        canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
+        canvas.configure(yscrollcommand=scrollbar.set)
+
+        canvas.pack(side="left", fill="both", expand=True)
+        scrollbar.pack(side="right", fill="y")
+
+        # Enable mouse wheel scrolling
+        self._bind_mousewheel(canvas)
+
+        # Header
+        header_frame = tk.Frame(scrollable_frame, bg=self.COLORS['bg_secondary'], pady=15)
+        header_frame.pack(fill=tk.X, padx=10, pady=10)
+
+        tk.Label(header_frame,
+                text="📚 Advanced Features Guide",
+                bg=self.COLORS['bg_secondary'],
+                fg=self.COLORS['accent'],
+                font=('Segoe UI', 16, 'bold')).pack()
+
+        tk.Label(header_frame,
+                text="Learn how to use Weather Rotation and Playlists to create dynamic wallpaper experiences",
+                bg=self.COLORS['bg_secondary'],
+                fg=self.COLORS['text_secondary'],
+                font=('Segoe UI', 10)).pack(pady=(5, 0))
+
+        # Weather Rotation Section
+        weather_group = ttk.LabelFrame(scrollable_frame, text="🌤️ Weather-Based Rotation", padding=15)
+        weather_group.pack(fill=tk.X, padx=10, pady=10)
+
+        weather_intro = tk.Text(weather_group, wrap=tk.WORD, height=4, bg=self.COLORS['bg_tertiary'],
+                               fg=self.COLORS['text_primary'], font=('Segoe UI', 9), relief=tk.FLAT, padx=10, pady=10)
+        weather_intro.insert("1.0",
+            "Weather Rotation permette di cambiare automaticamente il wallpaper in base alle condizioni meteo della tua posizione. "
+            "Puoi mappare diverse condizioni meteo (sole, pioggia, neve, ecc.) a preset o playlist specifici, creando "
+            "un'esperienza visiva che si adatta all'ambiente esterno.")
+        weather_intro.config(state=tk.DISABLED)
+        weather_intro.pack(fill=tk.X, pady=(0, 10))
+
+        # How to setup
+        setup_label = tk.Label(weather_group, text="⚙️ Come Configurare:",
+                              bg=self.COLORS['bg_secondary'], fg=self.COLORS['accent'],
+                              font=('Segoe UI', 11, 'bold'))
+        setup_label.pack(anchor=tk.W, pady=(10, 5))
+
+        setup_steps = [
+            "1. Ottieni un API key gratuita da OpenWeatherMap (https://openweathermap.org/api)",
+            "2. Aggiungi la key nel file .env come OPENWEATHER_API_KEY=your_key_here",
+            "3. Nel tab 'Advanced', configura la sezione Weather Rotation:",
+            "   • Abilita Weather Rotation",
+            "   • Imposta la tua posizione (città o coordinate)",
+            "   • Scegli quando applicare la rotazione (startup, scheduler, hotkey)",
+            "   • Imposta l'intervallo di refresh (es. 30 minuti)",
+            "4. Configura le mappature meteo → preset/playlist nella sezione 'Weather Mapping'"
+        ]
+
+        for step in setup_steps:
+            step_label = tk.Label(weather_group, text=step,
+                                 bg=self.COLORS['bg_secondary'], fg=self.COLORS['text_primary'],
+                                 font=('Segoe UI', 9), justify=tk.LEFT)
+            step_label.pack(anchor=tk.W, padx=20, pady=2)
+
+        # Weather conditions example
+        conditions_label = tk.Label(weather_group, text="☁️ Condizioni Supportate:",
+                                   bg=self.COLORS['bg_secondary'], fg=self.COLORS['accent'],
+                                   font=('Segoe UI', 11, 'bold'))
+        conditions_label.pack(anchor=tk.W, pady=(15, 5))
+
+        conditions_text = tk.Text(weather_group, wrap=tk.WORD, height=8, bg=self.COLORS['bg_tertiary'],
+                                 fg=self.COLORS['text_primary'], font=('Consolas', 9), relief=tk.FLAT, padx=10, pady=10)
+        conditions_text.insert("1.0",
+            "• clear          → Cielo sereno\n"
+            "• clouds         → Nuvoloso\n"
+            "• rain           → Pioggia\n"
+            "• drizzle        → Pioggerella\n"
+            "• snow           → Neve\n"
+            "• thunderstorm   → Temporale\n"
+            "• mist/fog       → Nebbia\n"
+            "• storm          → Tempesta\n"
+            "• night_clear    → Notte serena (usa il prefisso 'night_' per condizioni notturne)\n"
+            "• default        → Fallback per condizioni non mappate")
+        conditions_text.config(state=tk.DISABLED)
+        conditions_text.pack(fill=tk.X, pady=(0, 10))
+
+        # Example config
+        example_label = tk.Label(weather_group, text="📝 Esempio Configurazione (config.py):",
+                                bg=self.COLORS['bg_secondary'], fg=self.COLORS['accent'],
+                                font=('Segoe UI', 11, 'bold'))
+        example_label.pack(anchor=tk.W, pady=(15, 5))
+
+        example_text = tk.Text(weather_group, wrap=tk.NONE, height=15, bg=self.COLORS['bg_tertiary'],
+                              fg=self.COLORS['text_primary'], font=('Consolas', 8), relief=tk.FLAT, padx=10, pady=10)
+        example_text.insert("1.0",
+            'WeatherRotationSettings = {\n'
+            '    "enabled": True,\n'
+            '    "provider": "openweathermap",\n'
+            '    "api_key": os.getenv("OPENWEATHER_API_KEY"),\n'
+            '    "refresh_minutes": 30,\n'
+            '    "apply_on": ["startup", "scheduler", "hotkey"],\n'
+            '    "units": "metric",\n'
+            '    "location": {\n'
+            '        "city": "Milan",\n'
+            '        "country": "IT",\n'
+            '    },\n'
+            '    "conditions": {\n'
+            '        "clear": {"playlist": "focus_day"},\n'
+            '        "night_clear": {"playlist": "after_hours"},\n'
+            '        "rain": {"preset": "relax"},\n'
+            '        "snow": {"preset": "relax"},\n'
+            '        "default": {"playlist": "focus_day"},\n'
+            '    },\n'
+            '}')
+        example_text.config(state=tk.DISABLED)
+        example_text.pack(fill=tk.X)
+
+        # Playlists Section
+        playlist_group = ttk.LabelFrame(scrollable_frame, text="🎵 Playlists System", padding=15)
+        playlist_group.pack(fill=tk.X, padx=10, pady=10)
+
+        playlist_intro = tk.Text(playlist_group, wrap=tk.WORD, height=4, bg=self.COLORS['bg_tertiary'],
+                                fg=self.COLORS['text_primary'], font=('Segoe UI', 9), relief=tk.FLAT, padx=10, pady=10)
+        playlist_intro.insert("1.0",
+            "Le Playlist permettono di creare sequenze tematiche di preset che vengono applicati in rotazione. "
+            "Ogni entry nella playlist può avere un 'weight' (peso) che determina quante volte appare nella sequenza, "
+            "override per monitor specifici, e provider/query personalizzati. Ideali per creare esperienze contestuali "
+            "(es. focus durante il giorno, relax la sera).")
+        playlist_intro.config(state=tk.DISABLED)
+        playlist_intro.pack(fill=tk.X, pady=(0, 10))
+
+        # Playlist structure
+        structure_label = tk.Label(playlist_group, text="🏗️ Struttura di una Playlist:",
+                                  bg=self.COLORS['bg_secondary'], fg=self.COLORS['accent'],
+                                  font=('Segoe UI', 11, 'bold'))
+        structure_label.pack(anchor=tk.W, pady=(10, 5))
+
+        structure_points = [
+            "• name: Identificatore univoco (lowercase)",
+            "• title: Nome visualizzato nell'interfaccia",
+            "• description: Breve descrizione dello scopo",
+            "• tags: Array di tag per categorizzare",
+            "• entries: Array di step che compongono la playlist"
+        ]
+
+        for point in structure_points:
+            point_label = tk.Label(playlist_group, text=point,
+                                  bg=self.COLORS['bg_secondary'], fg=self.COLORS['text_primary'],
+                                  font=('Segoe UI', 9), justify=tk.LEFT)
+            point_label.pack(anchor=tk.W, padx=20, pady=2)
+
+        # Entry structure
+        entry_label = tk.Label(playlist_group, text="📋 Struttura di una Entry:",
+                              bg=self.COLORS['bg_secondary'], fg=self.COLORS['accent'],
+                              font=('Segoe UI', 11, 'bold'))
+        entry_label.pack(anchor=tk.W, pady=(15, 5))
+
+        entry_points = [
+            "• preset: Nome del preset da utilizzare (richiesto)",
+            "• weight: Numero di volte che appare in rotazione (default: 1)",
+            "• provider: Override del provider per questo step (opzionale)",
+            "• query: Query specifica per questo step (opzionale)",
+            "• title: Titolo descrittivo dello step (opzionale)",
+            "• monitors: Override specifici per monitor (opzionale)"
+        ]
+
+        for point in entry_points:
+            point_label = tk.Label(playlist_group, text=point,
+                                  bg=self.COLORS['bg_secondary'], fg=self.COLORS['text_primary'],
+                                  font=('Segoe UI', 9), justify=tk.LEFT)
+            point_label.pack(anchor=tk.W, padx=20, pady=2)
+
+        # Playlist example
+        playlist_example_label = tk.Label(playlist_group, text="📝 Esempio Playlist (config.py):",
+                                         bg=self.COLORS['bg_secondary'], fg=self.COLORS['accent'],
+                                         font=('Segoe UI', 11, 'bold'))
+        playlist_example_label.pack(anchor=tk.W, pady=(15, 5))
+
+        playlist_example_text = tk.Text(playlist_group, wrap=tk.NONE, height=25, bg=self.COLORS['bg_tertiary'],
+                                       fg=self.COLORS['text_primary'], font=('Consolas', 8), relief=tk.FLAT, padx=10, pady=10)
+        playlist_example_text.insert("1.0",
+            'Playlists = [\n'
+            '    {\n'
+            '        "name": "focus_day",\n'
+            '        "title": "Focus Daylight",\n'
+            '        "description": "Rotazione energizzante per il giorno",\n'
+            '        "tags": ["daytime", "focus"],\n'
+            '        "entries": [\n'
+            '            {\n'
+            '                "title": "Deep Focus",\n'
+            '                "preset": "workspace",\n'
+            '                "weight": 3,  # Appare 3 volte su 4\n'
+            '                "provider": "wallhaven",\n'
+            '                "monitors": {\n'
+            '                    "0": {"preset": "workspace"},  # Monitor index\n'
+            '                    "Full HD": {"provider": "wallhaven"},  # Monitor name\n'
+            '                    "Ultrawide": {"query": "technology"},\n'
+            '                },\n'
+            '            },\n'
+            '            {\n'
+            '                "title": "Mental Break",\n'
+            '                "preset": "relax",\n'
+            '                "weight": 1,  # Appare 1 volta su 4\n'
+            '                "provider": "pexels",\n'
+            '                "query": "nature landscape",\n'
+            '            },\n'
+            '        ],\n'
+            '    },\n'
+            ']\n\n'
+            '# Imposta la playlist di default\n'
+            'DefaultPlaylist = "focus_day"')
+        playlist_example_text.config(state=tk.DISABLED)
+        playlist_example_text.pack(fill=tk.X)
+
+        # How to use
+        usage_label = tk.Label(playlist_group, text="🚀 Come Usare le Playlist:",
+                              bg=self.COLORS['bg_secondary'], fg=self.COLORS['accent'],
+                              font=('Segoe UI', 11, 'bold'))
+        usage_label.pack(anchor=tk.W, pady=(15, 5))
+
+        usage_steps = [
+            "1. Definisci le tue playlist nell'array 'Playlists' in config.py",
+            "2. Imposta 'DefaultPlaylist' con il nome di una playlist (opzionale)",
+            "3. Usa Weather Rotation per mappare condizioni meteo a playlist specifiche",
+            "4. Il sistema ruoterà automaticamente tra gli step della playlist attiva",
+            "5. Gli step con weight maggiore appariranno più frequentemente nella rotazione"
+        ]
+
+        for step in usage_steps:
+            step_label = tk.Label(playlist_group, text=step,
+                                 bg=self.COLORS['bg_secondary'], fg=self.COLORS['text_primary'],
+                                 font=('Segoe UI', 9), justify=tk.LEFT)
+            step_label.pack(anchor=tk.W, padx=20, pady=2)
+
+        # Tips section
+        tips_group = ttk.LabelFrame(scrollable_frame, text="💡 Tips & Best Practices", padding=15)
+        tips_group.pack(fill=tk.X, padx=10, pady=10)
+
+        tips = [
+            "✓ Combina Weather Rotation e Playlist per esperienze contestuali automatiche",
+            "✓ Usa weight elevati per preset preferiti che vuoi vedere più spesso",
+            "✓ Gli override per monitor permettono configurazioni diverse per ogni schermo",
+            "✓ Testa le configurazioni meteo usando diverse condizioni nel tab Advanced",
+            "✓ Refresh meteo ogni 30-60 minuti è sufficiente per la maggior parte degli usi",
+            "✓ Crea playlist tematiche (focus, relax, serale) per diverse situazioni",
+            "✓ Usa il prefisso 'night_' nelle condizioni meteo per wallpaper notturni specifici",
+        ]
+
+        for tip in tips:
+            tip_label = tk.Label(tips_group, text=tip,
+                                bg=self.COLORS['bg_secondary'], fg=self.COLORS['text_primary'],
+                                font=('Segoe UI', 9), justify=tk.LEFT)
+            tip_label.pack(anchor=tk.W, padx=10, pady=3)
 
     def _create_logs_tab(self) -> None:
         """Create logs tab to display application logs"""
@@ -1375,6 +1936,190 @@ class WallpaperConfigGUI:
         except:
             return ""
 
+
+    def _format_python_literal(self, value: Any) -> str:
+        """Pretty format Python literals for editor areas."""
+        try:
+            return pprint.pformat(value, width=100, sort_dicts=False)
+        except Exception:
+            return repr(value)
+
+    def _format_playlists_text(self) -> None:
+        if not hasattr(self, 'playlists_text'):
+            return
+        raw = self.playlists_text.get('1.0', tk.END).strip() or '[]'
+        try:
+            data = ast.literal_eval(raw)
+        except Exception as error:
+            messagebox.showerror("Playlists", f"Unable to parse playlists: {error}")
+            return
+        self.playlists_text.delete('1.0', tk.END)
+        self.playlists_text.insert('1.0', self._format_python_literal(data))
+
+    def _reset_playlists_text(self) -> None:
+        if hasattr(self, 'playlists_text'):
+            self.playlists_text.delete('1.0', tk.END)
+            self.playlists_text.insert('1.0', self._format_python_literal(self.playlists_data or []))
+
+    def _format_weather_conditions_text(self) -> None:
+        if not hasattr(self, 'weather_conditions_text'):
+            return
+        raw = self.weather_conditions_text.get('1.0', tk.END).strip() or '{}'
+        try:
+            data = ast.literal_eval(raw)
+        except Exception as error:
+            messagebox.showerror("Weather Mapping", f"Unable to parse conditions: {error}")
+            return
+        self.weather_conditions_text.delete('1.0', tk.END)
+        self.weather_conditions_text.insert('1.0', self._format_python_literal(data))
+
+    def _reset_weather_conditions_text(self) -> None:
+        if hasattr(self, 'weather_conditions_text'):
+            conditions = {}
+            if isinstance(self.weather_settings, dict):
+                conditions = self.weather_settings.get('conditions') or {}
+            self.weather_conditions_text.delete('1.0', tk.END)
+            self.weather_conditions_text.insert('1.0', self._format_python_literal(conditions))
+
+    def _focus_playlists_editor(self) -> None:
+        self.notebook.select(self.advanced_frame)
+        self.root.after(150, lambda: self.playlists_text.focus_set() if hasattr(self, 'playlists_text') else None)
+
+    def _focus_weather_editor(self) -> None:
+        self.notebook.select(self.advanced_frame)
+        self.root.after(150, lambda: self.weather_conditions_text.focus_set() if hasattr(self, 'weather_conditions_text') else None)
+
+    def _test_weather_connection(self) -> None:
+        """Test the weather API connection and show current weather"""
+        import requests
+
+        # Update UI
+        self.weather_status_label.config(text="🔄 Testing connection...", fg=self.COLORS['warning'])
+        self.test_weather_btn.config(state=tk.DISABLED)
+        self.root.update()
+
+        # Get values
+        api_key = self.weather_api_key_var.get().strip()
+        city = self.weather_city_var.get().strip()
+        country = self.weather_country_var.get().strip()
+        lat = self.weather_lat_var.get().strip()
+        lon = self.weather_lon_var.get().strip()
+        units = self.weather_units_var.get() or "metric"
+
+        # Validate
+        if not api_key:
+            self.weather_status_label.config(
+                text="❌ Error: Please enter an API key first!",
+                fg=self.COLORS['error']
+            )
+            self.test_weather_btn.config(state=tk.NORMAL)
+            return
+
+        # Build params
+        params = {
+            "appid": api_key,
+            "units": units
+        }
+
+        if lat and lon:
+            try:
+                params["lat"] = float(lat)
+                params["lon"] = float(lon)
+                location_str = f"coordinates ({lat}, {lon})"
+            except ValueError:
+                self.weather_status_label.config(
+                    text="❌ Error: Latitude and Longitude must be numbers!",
+                    fg=self.COLORS['error']
+                )
+                self.test_weather_btn.config(state=tk.NORMAL)
+                return
+        elif city:
+            query = city if not country else f"{city},{country}"
+            params["q"] = query
+            location_str = query
+        else:
+            self.weather_status_label.config(
+                text="❌ Error: Please enter either City name or Latitude/Longitude!",
+                fg=self.COLORS['error']
+            )
+            self.test_weather_btn.config(state=tk.NORMAL)
+            return
+
+        # Make request
+        try:
+            response = requests.get(
+                "https://api.openweathermap.org/data/2.5/weather",
+                params=params,
+                timeout=10
+            )
+            response.raise_for_status()
+            data = response.json()
+
+            # Parse response
+            weather_list = data.get("weather", [])
+            weather = weather_list[0] if weather_list else {}
+            main_condition = weather.get("main", "Unknown")
+            description = weather.get("description", "")
+            temp = data.get("main", {}).get("temp", "N/A")
+            feels_like = data.get("main", {}).get("feels_like", "N/A")
+            humidity = data.get("main", {}).get("humidity", "N/A")
+            city_name = data.get("name", location_str)
+
+            # Unit symbol
+            temp_unit = "°C" if units == "metric" else ("°F" if units == "imperial" else "K")
+
+            # Success message
+            success_text = (
+                f"✅ Connection successful!\n\n"
+                f"📍 Location: {city_name}\n"
+                f"☁️ Condition: {main_condition} ({description})\n"
+                f"🌡️ Temperature: {temp}{temp_unit} (feels like {feels_like}{temp_unit})\n"
+                f"💧 Humidity: {humidity}%\n\n"
+                f"✨ Your weather API is working! This condition would be mapped as: '{main_condition.lower()}'"
+            )
+
+            self.weather_status_label.config(
+                text=success_text,
+                fg=self.COLORS['success']
+            )
+
+        except requests.exceptions.HTTPError as e:
+            if e.response.status_code == 401:
+                error_text = (
+                    "❌ API Key Error: Invalid or unauthorized API key.\n\n"
+                    "⏰ IMPORTANT: If you just created the API key, it can take up to 2 HOURS to activate!\n"
+                    "OpenWeatherMap says it's active in your account, but the backend needs time to propagate.\n\n"
+                    "Please check:\n"
+                    "1. Did you copy the key correctly from your account?\n"
+                    "2. Was it created less than 2 hours ago? → Wait and try again later\n"
+                    "3. Is it showing as 'Active' at https://home.openweathermap.org/api_keys ?\n\n"
+                    "💡 TIP: Try again in 15-30 minutes if you just created it."
+                )
+            elif e.response.status_code == 404:
+                error_text = (
+                    f"❌ Location Error: '{location_str}' not found.\n\n"
+                    "Please check your city name or try using latitude/longitude instead."
+                )
+            else:
+                error_text = f"❌ HTTP Error {e.response.status_code}: {str(e)}"
+
+            self.weather_status_label.config(text=error_text, fg=self.COLORS['error'])
+
+        except requests.exceptions.Timeout:
+            self.weather_status_label.config(
+                text="❌ Connection timeout. Please check your internet connection.",
+                fg=self.COLORS['error']
+            )
+
+        except Exception as e:
+            self.weather_status_label.config(
+                text=f"❌ Error: {str(e)}",
+                fg=self.COLORS['error']
+            )
+
+        finally:
+            self.test_weather_btn.config(state=tk.NORMAL)
+
     def _toggle_password_visibility(self, entry_widget) -> None:
         """Toggle password visibility for API key fields"""
         current_show = entry_widget.cget("show")
@@ -1393,17 +2138,22 @@ class WallpaperConfigGUI:
             env_path = Path(__file__).parent / '.env'
             wallhaven_key = self.wallhaven_key_var.get().strip()
             pexels_key = self.pexels_key_var.get().strip()
+            openweather_key = self.weather_api_key_var.get().strip() if hasattr(self, 'weather_api_key_var') else ""
 
             content = f"""# Wallhaven API Key from https://wallhaven.cc/settings/account
 WALLHAVEN_API_KEY={wallhaven_key}
 
 # Pexels API Key from https://www.pexels.com/api/new/
 PEXELS_API_KEY={pexels_key}
+
+# OpenWeatherMap API Key from https://home.openweathermap.org/api_keys
+# Free tier: 1000 calls/day (more than enough!)
+OPENWEATHER_API_KEY={openweather_key}
 """
             with open(env_path, 'w', encoding='utf-8') as f:
                 f.write(content)
 
-            messagebox.showinfo("Success", "API Keys saved successfully to .env file!")
+            messagebox.showinfo("Success", "API Keys saved successfully to .env file!\n\nAll API keys (Wallhaven, Pexels, OpenWeatherMap) have been saved.")
         except Exception as e:
             messagebox.showerror("Error", f"Failed to save API keys: {e}")
 
@@ -1893,33 +2643,195 @@ PEXELS_API_KEY={pexels_key}
             with open(self.config_path, "r", encoding="utf-8") as f:
                 lines = f.readlines()
 
-            # Update values
-            new_lines = []
+            # Prepare advanced structures
+            try:
+                playlists_literal: Any = self.playlists_data or []
+                if hasattr(self, 'playlists_text'):
+                    raw_playlists = self.playlists_text.get('1.0', tk.END).strip()
+                    if raw_playlists:
+                        playlists_literal = ast.literal_eval(raw_playlists)
+                    else:
+                        playlists_literal = []
+                if not isinstance(playlists_literal, list):
+                    raise ValueError("Playlists must be a list of dictionaries")
+            except Exception as error:
+                messagebox.showerror("Playlists", f"Unable to parse playlists: {error}")
+                return
+
+            try:
+                weather_conditions: Any = {}
+                if isinstance(self.weather_settings, dict):
+                    weather_conditions = self.weather_settings.get('conditions') or {}
+                if hasattr(self, 'weather_conditions_text'):
+                    raw_conditions = self.weather_conditions_text.get('1.0', tk.END).strip()
+                    if raw_conditions:
+                        weather_conditions = ast.literal_eval(raw_conditions)
+                    else:
+                        weather_conditions = {}
+                if not isinstance(weather_conditions, dict):
+                    raise ValueError("Weather conditions must be a dictionary")
+            except Exception as error:
+                messagebox.showerror("Weather Mapping", f"Unable to parse weather conditions: {error}")
+                return
+
+            weather_settings = dict(self.weather_settings or {}) if isinstance(self.weather_settings, dict) else {}
+            weather_settings.update(
+                {
+                    "enabled": bool(self.weather_enabled_var.get() if hasattr(self, 'weather_enabled_var') else weather_settings.get('enabled', False)),
+                    "provider": self.weather_provider_var.get().strip() if hasattr(self, 'weather_provider_var') else weather_settings.get("provider", "openweathermap"),
+                    "api_key": 'os.getenv("OPENWEATHER_API_KEY", "")',  # Use os.getenv to read from .env
+                    "refresh_minutes": max(1, int(self.weather_refresh_var.get() if hasattr(self, 'weather_refresh_var') else weather_settings.get("refresh_minutes", 30) or 30)),
+                    "units": self.weather_units_var.get().strip() if hasattr(self, 'weather_units_var') else weather_settings.get("units", "metric"),
+                }
+            )
+
+            apply_on: List[str] = []
+            if hasattr(self, 'weather_apply_on_vars'):
+                for trigger, var in self.weather_apply_on_vars.items():
+                    if var.get():
+                        apply_on.append(trigger)
+            else:
+                apply_on = weather_settings.get("apply_on", []) or []
+            weather_settings["apply_on"] = apply_on
+
+            location: Dict[str, Any] = {}
+            if hasattr(self, 'weather_city_var') and self.weather_city_var.get().strip():
+                location["city"] = self.weather_city_var.get().strip()
+            if hasattr(self, 'weather_country_var') and self.weather_country_var.get().strip():
+                location["country"] = self.weather_country_var.get().strip()
+            if hasattr(self, 'weather_lat_var') and self.weather_lat_var.get().strip():
+                try:
+                    location["latitude"] = float(self.weather_lat_var.get().strip())
+                except ValueError:
+                    messagebox.showerror("Weather Mapping", "Latitude must be a number")
+                    return
+            if hasattr(self, 'weather_lon_var') and self.weather_lon_var.get().strip():
+                try:
+                    location["longitude"] = float(self.weather_lon_var.get().strip())
+                except ValueError:
+                    messagebox.showerror("Weather Mapping", "Longitude must be a number")
+                    return
+            weather_settings["location"] = location
+            weather_settings["conditions"] = weather_conditions
+
+            default_playlist_value = ""
+            if hasattr(self, 'default_playlist_display_var'):
+                selection = self.default_playlist_display_var.get().strip()
+                default_playlist_value = "" if selection in {"", "(None)"} else selection
+
+            playlists_block = "Playlists = " + self._format_python_literal(playlists_literal)
+            weather_block_raw = self._format_python_literal(weather_settings)
+            # Fix: os.getenv() should not be quoted - replace the quoted version with executable code
+            weather_block_raw = weather_block_raw.replace('"os.getenv(\\"OPENWEATHER_API_KEY\\", \\"\\")"', 'os.getenv("OPENWEATHER_API_KEY", "")')
+            weather_block_raw = weather_block_raw.replace("'os.getenv(\"OPENWEATHER_API_KEY\", \"\")'", 'os.getenv("OPENWEATHER_API_KEY", "")')
+            weather_block = "WeatherRotationSettings = " + weather_block_raw
+
+            new_lines: List[str] = []
             in_monitors_section = False
             monitor_entry_counter = -1
             in_reddit_section = False
+            skip_playlists = False
+            skip_weather = False
+            in_weather_location = False
+            found_default_playlist = False
+            found_playlists = False
+            found_weather = False
+            found_monitors = False
 
             for line in lines:
-                # Simple replacements
-                if line.strip().startswith("Provider ="):
+                stripped = line.strip()
+
+                if skip_playlists:
+                    # Preserve original playlist lines
+                    new_lines.append(line)
+                    if stripped.startswith("]"):
+                        skip_playlists = False
+                    continue
+                if skip_weather:
+                    # Track if we're inside the "location" sub-dict
+                    if '"location":' in line and '{' in line:
+                        in_weather_location = True
+                        new_lines.append(line)
+                        # Continue to skip further processing of this line
+                    # Update specific weather settings fields that GUI can modify
+                    elif '"enabled":' in line:
+                        indent = line[:len(line) - len(line.lstrip())]
+                        enabled_val = self.weather_enabled_var.get() if hasattr(self, 'weather_enabled_var') else True
+                        new_lines.append(f'{indent}"enabled": {enabled_val},\n')
+                    elif '"refresh_minutes":' in line:
+                        indent = line[:len(line) - len(line.lstrip())]
+                        refresh_val = int(self.weather_refresh_var.get()) if hasattr(self, 'weather_refresh_var') else 30
+                        new_lines.append(f'{indent}"refresh_minutes": {refresh_val},\n')
+                    elif '"units":' in line:
+                        indent = line[:len(line) - len(line.lstrip())]
+                        units_val = self.weather_units_var.get() if hasattr(self, 'weather_units_var') else "metric"
+                        new_lines.append(f'{indent}"units": "{units_val}",\n')
+                    elif '"apply_on":' in line:
+                        indent = line[:len(line) - len(line.lstrip())]
+                        apply_on = []
+                        if hasattr(self, 'weather_apply_on_vars'):
+                            for trigger, var in self.weather_apply_on_vars.items():
+                                if var.get():
+                                    apply_on.append(trigger)
+                        else:
+                            apply_on = ["startup", "scheduler", "hotkey"]
+                        new_lines.append(f'{indent}"apply_on": {apply_on},\n')
+                    elif in_weather_location and '"city":' in line:
+                        indent = line[:len(line) - len(line.lstrip())]
+                        city_val = self.weather_city_var.get() if hasattr(self, 'weather_city_var') else "Milan"
+                        new_lines.append(f'{indent}"city": "{city_val}",\n')
+                    elif in_weather_location and '"country":' in line:
+                        indent = line[:len(line) - len(line.lstrip())]
+                        country_val = self.weather_country_var.get() if hasattr(self, 'weather_country_var') else "IT"
+                        new_lines.append(f'{indent}"country": "{country_val}",\n')
+                    elif in_weather_location and '"latitude":' in line:
+                        indent = line[:len(line) - len(line.lstrip())]
+                        lat_val = self.weather_lat_var.get() if hasattr(self, 'weather_lat_var') else "45.4642"
+                        try:
+                            lat_val = float(lat_val) if lat_val else 45.4642
+                        except:
+                            lat_val = 45.4642
+                        new_lines.append(f'{indent}"latitude": {lat_val},\n')
+                    elif in_weather_location and '"longitude":' in line:
+                        indent = line[:len(line) - len(line.lstrip())]
+                        lon_val = self.weather_lon_var.get() if hasattr(self, 'weather_lon_var') else "9.19"
+                        try:
+                            lon_val = float(lon_val) if lon_val else 9.19
+                        except:
+                            lon_val = 9.19
+                        new_lines.append(f'{indent}"longitude": {lon_val},\n')
+                    else:
+                        # Keep other lines as-is (api_key, provider, conditions, etc.)
+                        new_lines.append(line)
+
+                    # Check if we're exiting the location block
+                    if in_weather_location and stripped.startswith("},"):
+                        in_weather_location = False
+
+                    # Check if we're exiting the weather settings block
+                    if stripped.startswith("}") and not in_weather_location:
+                        skip_weather = False
+                    continue
+
+                if stripped.startswith("Provider ="):
                     new_lines.append(f'Provider = "{self.provider_var.get()}"\n')
-                elif line.strip().startswith("Query ="):
+                elif stripped.startswith("Query ="):
                     new_lines.append(f'Query = "{self.query_var.get()}"\n')
-                elif line.strip().startswith("PurityLevel ="):
+                elif stripped.startswith("PurityLevel ="):
                     new_lines.append(f'PurityLevel = "{self.purity_var.get()}"\n')
-                elif line.strip().startswith("ScreenResolution ="):
+                elif stripped.startswith("ScreenResolution ="):
                     new_lines.append(f'ScreenResolution = "{self.resolution_var.get()}"\n')
-                elif line.strip().startswith("WallhavenSorting ="):
+                elif stripped.startswith("WallhavenSorting ="):
                     new_lines.append(f'WallhavenSorting = "{self.sorting_var.get()}"\n')
-                elif line.strip().startswith("WallhavenTopRange ="):
+                elif stripped.startswith("WallhavenTopRange ="):
                     new_lines.append(f'WallhavenTopRange = "{self.toprange_var.get()}"\n')
-                elif line.strip().startswith("PexelsMode ="):
+                elif stripped.startswith("PexelsMode ="):
                     new_lines.append(f'PexelsMode = "{self.pexels_mode_var.get()}"\n')
-                elif line.strip().startswith("RotateProviders ="):
+                elif stripped.startswith("RotateProviders ="):
                     new_lines.append(f'RotateProviders = {self.rotate_providers_var.get()}\n')
-                elif line.strip().startswith("KeyBind ="):
+                elif stripped.startswith("KeyBind ="):
                     new_lines.append(f'KeyBind = "{self.keybind_var.get()}"\n')
-                elif line.strip().startswith("RedditSettings = {"):
+                elif stripped.startswith("RedditSettings = {"):
                     in_reddit_section = True
                     new_lines.append(line)
                 elif in_reddit_section and '"subreddits":' in line:
@@ -1930,9 +2842,7 @@ PEXELS_API_KEY={pexels_key}
                 elif in_reddit_section and '"sort":' in line:
                     new_lines.append(f'    "sort": {json.dumps(self.reddit_sort_var.get().strip().lower() or "hot")},\n')
                 elif in_reddit_section and '"time_filter":' in line:
-                    new_lines.append(
-                        f'    "time_filter": {json.dumps(self.reddit_time_var.get().strip().lower() or "day")},\n'
-                    )
+                    new_lines.append(f'    "time_filter": {json.dumps(self.reddit_time_var.get().strip().lower() or "day")},\n')
                 elif in_reddit_section and '"limit":' in line:
                     limit_value = max(10, min(100, int(self.reddit_limit_var.get() or 60)))
                     new_lines.append(f'    "limit": {limit_value},\n')
@@ -1942,11 +2852,9 @@ PEXELS_API_KEY={pexels_key}
                 elif in_reddit_section and '"allow_nsfw":' in line:
                     new_lines.append(f'    "allow_nsfw": {self.reddit_nsfw_var.get()},\n')
                 elif in_reddit_section and '"user_agent":' in line:
-                    user_agent = self.reddit_user_agent_var.get().strip()
-                    if not user_agent:
-                        user_agent = "WallpaperChanger/1.0 (by u/yourusername)"
+                    user_agent = self.reddit_user_agent_var.get().strip() or "WallpaperChanger/1.0 (by u/yourusername)"
                     new_lines.append(f'    "user_agent": {json.dumps(user_agent)},\n')
-                elif in_reddit_section and line.strip().startswith("}"):
+                elif in_reddit_section and stripped.startswith("}"):
                     in_reddit_section = False
                     new_lines.append(line)
                 elif '"enabled":' in line and "SchedulerSettings" in "".join(new_lines[-10:]):
@@ -1963,36 +2871,79 @@ PEXELS_API_KEY={pexels_key}
                     new_lines.append(f'    "enable_offline_rotation": {self.cache_offline_var.get()},\n')
                 elif '"directory":' in line and "CacheSettings" in "".join(new_lines[-10:]):
                     cache_path = self.cache_dir_var.get() if hasattr(self, 'cache_dir_var') else ""
-                    new_lines.append(f'    "directory": "{cache_path}",\n')
-                elif line.strip().startswith("DefaultPreset ="):
+                    # Use raw string prefix for Windows paths
+                    new_lines.append(f'    "directory": r"{cache_path}",\n')
+                elif stripped.startswith("DefaultPreset ="):
                     default_preset = self.default_preset_var.get() if hasattr(self, 'default_preset_var') else "workspace"
                     new_lines.append(f'DefaultPreset = "{default_preset}"\n')
-                # Monitor resolution updates
-                elif line.strip().startswith("Monitors = ["):
+                elif stripped.startswith("DefaultPlaylist ="):
+                    found_default_playlist = True
+                    new_lines.append(f'DefaultPlaylist = "{default_playlist_value}"\n')
+                elif stripped.startswith("Playlists ="):
+                    found_playlists = True
+                    # Preserve original Playlists section - don't reformat
+                    new_lines.append(line)
+                    skip_playlists = True
+                elif stripped.startswith("WeatherRotationSettings ="):
+                    found_weather = True
+                    # Preserve original WeatherRotationSettings section - don't reformat
+                    new_lines.append(line)
+                    skip_weather = True
+                elif stripped.startswith("Monitors = ["):
+                    found_monitors = True
                     in_monitors_section = True
                     monitor_entry_counter = -1
                     new_lines.append(line)
-                elif in_monitors_section and line.strip() == "{":
+                elif in_monitors_section and stripped == "{":
                     monitor_entry_counter += 1
                     new_lines.append(line)
                 elif in_monitors_section and '"screen_resolution":' in line and hasattr(self, 'monitor_resolution_vars'):
-                    # Update resolution for this monitor
                     if monitor_entry_counter in self.monitor_resolution_vars:
                         resolution = self.monitor_resolution_vars[monitor_entry_counter].get()
                         indent = line[:len(line) - len(line.lstrip())]
                         new_lines.append(f'{indent}"screen_resolution": "{resolution}",\n')
                     else:
                         new_lines.append(line)
-                elif in_monitors_section and line.strip() == "]":
+                elif in_monitors_section and stripped == "]":
                     in_monitors_section = False
                     new_lines.append(line)
                 else:
                     new_lines.append(line)
 
+            # Append missing sections at the end if they weren't found in the original file
+            if not found_default_playlist:
+                new_lines.append(f'\nDefaultPlaylist = "{default_playlist_value}"\n')
+
+            if not found_playlists:
+                new_lines.append(f'\n{playlists_block}\n')
+
+            if not found_weather:
+                new_lines.append(f'\n{weather_block}\n')
+
+            if not found_monitors:
+                # Add default Monitors section
+                new_lines.append('\nMonitors = [\n')
+                new_lines.append('    {\n')
+                new_lines.append('        "name": "Full HD",\n')
+                new_lines.append('        "preset": "workspace",\n')
+                new_lines.append('        "provider": "",\n')
+                new_lines.append('        "query": "",\n')
+                new_lines.append('        "screen_resolution": "1920x1080",\n')
+                new_lines.append('        "purity": "100",\n')
+                new_lines.append('        "wallhaven_sorting": "random",\n')
+                new_lines.append('        "wallhaven_top_range": "1M",\n')
+                new_lines.append('    },\n')
+                new_lines.append(']\n')
+
             with open(self.config_path, "w", encoding="utf-8") as f:
                 f.writelines(new_lines)
 
-            # Save API keys separately
+            self.playlists_data = playlists_literal
+            self.weather_settings = weather_settings
+            self.config_data["Playlists"] = playlists_literal
+            self.config_data["WeatherRotationSettings"] = weather_settings
+            self.config_data["DefaultPlaylist"] = default_playlist_value
+
             if hasattr(self, 'wallhaven_key_var') and hasattr(self, 'pexels_key_var'):
                 self._save_api_keys()
 
@@ -2003,12 +2954,75 @@ PEXELS_API_KEY={pexels_key}
     def _reload_config(self) -> None:
         """Reload configuration"""
         self._load_config()
+        self.playlists_data = list(self.config_data.get("Playlists") or [])
+        self.weather_settings = dict(self.config_data.get("WeatherRotationSettings") or {})
         messagebox.showinfo("Success", "Configuration reloaded!")
-        # Update UI elements
+
+        # Update basic UI elements
         self.provider_var.set(self.config_data.get("Provider", "wallhaven"))
         self.query_var.set(self.config_data.get("Query", "nature"))
         self.purity_var.set(self.config_data.get("PurityLevel", "100"))
         self.resolution_var.set(self.config_data.get("ScreenResolution", "1920x1080"))
+
+        if hasattr(self, 'default_preset_var'):
+            self.default_preset_var.set(self._extract_value(self._get_config_content(), "DefaultPreset") or "workspace")
+
+        # Update playlist selector and summary
+        if hasattr(self, 'default_playlist_display_var'):
+            raw_default_playlist = (self.config_data.get("DefaultPlaylist") or "").strip()
+            playlist_names: List[str] = []
+            seen = set()
+            for item in self.playlists_data:
+                if isinstance(item, dict):
+                    name = str(item.get("name", "")).strip()
+                    if name and name not in seen:
+                        playlist_names.append(name)
+                        seen.add(name)
+            display_value = raw_default_playlist if raw_default_playlist in playlist_names else "(None)"
+            self.default_playlist_display_var.set(display_value)
+            if hasattr(self, 'default_playlist_combo'):
+                values = ["(None)"] + playlist_names
+                self.default_playlist_combo['values'] = values
+            if hasattr(self, 'playlist_summary_label'):
+                if playlist_names:
+                    summary_lines = [f"- {name}" for name in playlist_names]
+                    summary_text = "\n".join(summary_lines)
+                else:
+                    summary_text = "No playlists defined yet."
+                self.playlist_summary_label.configure(text=summary_text)
+        if hasattr(self, 'playlists_text'):
+            self._reset_playlists_text()
+
+        # Update weather controls
+        if isinstance(self.weather_settings, dict):
+            location = self.weather_settings.get("location", {}) or {}
+            apply_on = set(self.weather_settings.get("apply_on", []) or [])
+            if hasattr(self, 'weather_enabled_var'):
+                self.weather_enabled_var.set(bool(self.weather_settings.get("enabled", False)))
+            if hasattr(self, 'weather_provider_var'):
+                self.weather_provider_var.set(str(self.weather_settings.get("provider", "openweathermap") or "openweathermap"))
+            if hasattr(self, 'weather_api_key_var'):
+                self.weather_api_key_var.set(str(self.weather_settings.get("api_key", "") or ""))
+            if hasattr(self, 'weather_refresh_var'):
+                self.weather_refresh_var.set(int(self.weather_settings.get("refresh_minutes", 30) or 30))
+            if hasattr(self, 'weather_units_var'):
+                self.weather_units_var.set(str(self.weather_settings.get("units", "metric") or "metric"))
+            if hasattr(self, 'weather_city_var'):
+                self.weather_city_var.set(str(location.get("city", "") or ""))
+            if hasattr(self, 'weather_country_var'):
+                self.weather_country_var.set(str(location.get("country", "") or ""))
+            if hasattr(self, 'weather_lat_var'):
+                latitude = location.get("latitude", "")
+                self.weather_lat_var.set("" if latitude in (None, "") else str(latitude))
+            if hasattr(self, 'weather_lon_var'):
+                longitude = location.get("longitude", "")
+                self.weather_lon_var.set("" if longitude in (None, "") else str(longitude))
+            if hasattr(self, 'weather_apply_on_vars'):
+                for trigger, var in self.weather_apply_on_vars.items():
+                    var.set(trigger in apply_on)
+        if hasattr(self, 'weather_conditions_text'):
+            self._reset_weather_conditions_text()
+
 
 
 def main() -> None:

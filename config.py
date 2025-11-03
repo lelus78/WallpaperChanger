@@ -13,7 +13,7 @@ Provider = "reddit"
 ProvidersSequence = ["wallhaven", "pexels", "reddit"]
 
 # Enable or disable provider rotation
-RotateProviders = False
+RotateProviders = True
 
 # Enter your Wallhaven API Key from https://wallhaven.cc/settings/account
 # Or set it in the .env file as WALLHAVEN_API_KEY
@@ -55,7 +55,7 @@ WallhavenTopRange = "1M"
 
 # Cache settings: directory (blank for default), max_items (int), enable_offline_rotation (bool)
 CacheSettings = {
-    "directory": "C:\Users\EmanueleO\WallpaperChangerCache",
+    "directory": r"C:\Users\EmanueleO\WallpaperChangerCache",
     "max_items": 60,
     "enable_offline_rotation": True,
 }
@@ -132,6 +132,66 @@ DefaultPreset = "workspace"
 
 # Default is ctrl+alt+w, use https://github.com/boppreh/keyboard#api to see all different key names
 KeyBind = "ctrl+alt+w"
+
+
+# Weather-based playlists - each optimized for specific weather conditions
+Playlists = [
+    {"name": "sunny_work", "title": "Sunny Productivity", "tags": ["sunny"],
+     "entries": [
+         {"title": "Bright Focus", "preset": "workspace", "weight": 3, "query": "bright technology minimal"},
+         {"title": "Sunrise Energy", "preset": "relax", "weight": 1, "query": "sunrise landscape bright"}
+     ]},
+    {"name": "cloudy_focus", "title": "Cloudy Concentration", "tags": ["cloudy"],
+     "entries": [
+         {"title": "Gentle Workspace", "preset": "workspace", "weight": 2, "query": "clouds minimal peaceful"},
+         {"title": "Misty Mountains", "preset": "relax", "weight": 1, "query": "foggy mountains landscape"}
+     ]},
+    {"name": "rain_relax", "title": "Rainy Day Comfort", "tags": ["rain"],
+     "entries": [
+         {"title": "Cozy Interior", "preset": "relax", "weight": 2, "query": "cozy rain window"},
+         {"title": "Rain Droplets", "preset": "workspace", "weight": 1, "query": "rain water drops dark"}
+     ]},
+    {"name": "night_calm", "title": "Night Wind Down", "tags": ["night"],
+     "entries": [
+         {"title": "Blue Hour", "preset": "relax", "weight": 2, "query": "blue hour landscape night"},
+         {"title": "City Lights", "preset": "workspace", "weight": 1, "query": "night city lights"}
+     ]},
+    {"name": "storm_power", "title": "Storm Energy", "tags": ["storm"],
+     "entries": [
+         {"title": "Thunder Clouds", "preset": "relax", "weight": 2, "query": "storm clouds dramatic dark"},
+         {"title": "Lightning Power", "preset": "workspace", "weight": 1, "query": "lightning storm nature"}
+     ]}
+]
+
+DefaultPlaylist = ""
+
+WeatherRotationSettings = {
+    "enabled": True,
+    "provider": "openweathermap",
+    "api_key": os.getenv("OPENWEATHER_API_KEY", ""),
+    "refresh_minutes": 30,
+    "apply_on": ['startup', 'scheduler', 'hotkey', 'tray', 'gui'],
+    "units": "metric",
+    "location": {
+        "city": "cameri",
+        "country": "it",
+        "latitude": 45.4642,
+        "longitude": 9.19,
+    },
+    "conditions": {
+        "clear": {"playlist": "sunny_work"},
+        "night_clear": {"playlist": "night_calm"},
+        "clouds": {"playlist": "cloudy_focus"},
+        "rain": {"playlist": "rain_relax"},
+        "drizzle": {"playlist": "rain_relax"},
+        "snow": {"preset": "relax"},
+        "thunderstorm": {"playlist": "storm_power"},
+        "mist": {"playlist": "cloudy_focus"},
+        "fog": {"playlist": "cloudy_focus"},
+        "storm": {"playlist": "storm_power"},
+        "default": {"playlist": "sunny_work"},
+    },
+}
 
 # Optional per-monitor overrides. The list order matches your physical monitors.
 # Each entry can override provider/query/preset just for that screen.

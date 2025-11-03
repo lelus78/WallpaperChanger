@@ -28,10 +28,13 @@ from config import (
     ProvidersSequence,
     RotateProviders,
     SchedulerSettings,
+    WeatherRotationSettings,
 )
+from playlist_manager import PlaylistManager, PlaylistStep
 from preset_manager import Preset, PresetManager
 from scheduler_service import SchedulerService
 from tray_app import TrayApp
+from weather_rotation import WeatherDecision, WeatherRotationController
 
 SPI_SETDESKWALLPAPER = 20
 SPIF_UPDATEINIFILE = 0x01
@@ -329,7 +332,10 @@ class WallpaperApp:
         self.logger.info("Initializing WallpaperApp")
 
         self.preset_manager = PresetManager()
+        self.playlist_manager = PlaylistManager()
+        self.weather_rotation = WeatherRotationController(WeatherRotationSettings, self.logger)
         self.active_preset = self.preset_manager.default_name
+        self.active_playlist = self.playlist_manager.default_name
 
         cache_dir = CacheSettings.get("directory") or os.path.join(
             os.path.expanduser("~"), "WallpaperChangerCache"
@@ -346,6 +352,10 @@ class WallpaperApp:
         self.pid_path = os.path.join(self.app_dir, "wallpaperchanger.pid")
         self._pid_registered = False
         self._restore_provider_state()
+
+        # Debounce mechanism to prevent rapid-fire wallpaper changes
+        self._last_change_time = 0.0
+        self._change_lock = threading.Lock()
 
     def start(self) -> None:
         self.logger.info(f"Starting Wallpaper Changer (hotkey: {KeyBind})")
@@ -521,11 +531,50 @@ class WallpaperApp:
         self.change_wallpaper("gui", preset_name=preset_name, provider_override=provider_override)
 
     def set_active_preset(self, preset_name: str) -> None:
-        if preset_name == self.active_preset:
+        playlist_was_active = bool(self.active_playlist)
+        if not playlist_was_active and preset_name == self.active_preset:
             return
+
+        previous_playlist = self.active_playlist
+        if previous_playlist:
+            self.playlist_manager.reset(previous_playlist)
+            self.active_playlist = None
+            self.logger.info(
+                "Playlist '%s' disattivata in favore del preset '%s'",
+                previous_playlist,
+                preset_name,
+            )
+
         self.active_preset = preset_name
         self.logger.info(f"Preset switched to '{preset_name}'")
         self.change_wallpaper("preset-switch", preset_name=preset_name)
+
+    def set_active_playlist(self, playlist_name: Optional[str]) -> None:
+        if not playlist_name:
+            if not self.active_playlist:
+                return
+            previous = self.active_playlist
+            self.playlist_manager.reset(previous)
+            self.active_playlist = None
+            self.logger.info(
+                "Playlist '%s' disattivata; ritorno al preset '%s'",
+                previous,
+                self.active_preset,
+            )
+            self.change_wallpaper("playlist-switch")
+            return
+
+        playlist = self.playlist_manager.get_playlist(playlist_name)
+        if not playlist:
+            self.logger.warning("Playlist '%s' non trovata, nessun cambiamento applicato.", playlist_name)
+            return
+        if self.active_playlist == playlist.name:
+            return
+
+        self.active_playlist = playlist.name
+        self.playlist_manager.reset(self.active_playlist)
+        self.logger.info("Playlist attiva: %s (%s)", playlist.title, playlist.name)
+        self.change_wallpaper("playlist-switch")
 
     def pick_active_provider(self, preset: Preset) -> str:
         sequence = self._build_provider_sequence(preset, Provider)
@@ -662,16 +711,119 @@ class WallpaperApp:
 
     def change_wallpaper(
         self,
-        trigger: Literal["startup", "hotkey", "scheduler", "tray", "tray-cache", "preset-switch", "gui"],
+        trigger: Literal[
+            "startup",
+            "hotkey",
+            "scheduler",
+            "tray",
+            "tray-cache",
+            "preset-switch",
+            "playlist-switch",
+            "gui",
+        ],
         preset_name: Optional[str] = None,
         provider_override: Optional[str] = None,
         use_cache: bool = False,
     ) -> None:
+        # Debounce: prevent rapid-fire changes from duplicate hotkey triggers
+        # Allow startup/scheduler to bypass debounce
+        import time
+        current_time = time.time()
+
+        if trigger in ["hotkey", "gui", "tray"]:
+            with self._change_lock:
+                # Ignore if less than 1 second since last change
+                if current_time - self._last_change_time < 1.0:
+                    self.logger.debug(f"Ignoring duplicate {trigger} trigger (debounce)")
+                    return
+                self._last_change_time = current_time
+
         self.logger.info(f"Changing wallpaper (trigger: {trigger})")
+
+        playlist_step: Optional[PlaylistStep] = None
+        playlist_name_in_use: Optional[str] = None
+        step_label: Optional[str] = None
+        weather_decision: Optional[WeatherDecision] = None
+        weather_note: Optional[str] = None
+
+        selected_preset_name = preset_name or self.active_preset
+        preset = self.preset_manager.get_preset(selected_preset_name)
+        provider = normalize_provider(provider_override or Provider)
+
+        if not preset_name and self.weather_rotation.enabled:
+            weather_decision = self.weather_rotation.evaluate(trigger)
+            if weather_decision:
+                weather_note = (
+                    f"{weather_decision.provider}:{weather_decision.condition}->{weather_decision.mode}:{weather_decision.value}"
+                )
+                # Format temperature for logging
+                temp_str = f"{weather_decision.temperature:.1f}°C" if weather_decision.temperature is not None else "N/A"
+
+                if weather_decision.mode == "playlist":
+                    playlist_target = self.playlist_manager.get_playlist(weather_decision.value)
+                    if playlist_target:
+                        if self.active_playlist and self.active_playlist != playlist_target.name:
+                            self.playlist_manager.reset(self.active_playlist)
+                        if self.active_playlist != playlist_target.name:
+                            self.playlist_manager.reset(playlist_target.name)
+                        self.active_playlist = playlist_target.name
+                        self.logger.info(
+                            "🌤️ Weather: %s (%s) -> playlist '%s'",
+                            weather_decision.condition,
+                            temp_str,
+                            playlist_target.name,
+                        )
+                    else:
+                        self.logger.warning(
+                            "Playlist '%s' indicata dal meteo non trovata, ignoro la rotazione meteo.",
+                            weather_decision.value,
+                        )
+                        weather_note = None
+                        weather_decision = None
+                elif weather_decision.mode == "preset":
+                    if self.active_playlist:
+                        self.playlist_manager.reset(self.active_playlist)
+                    self.active_playlist = None
+                    selected_preset_name = weather_decision.value
+                    preset = self.preset_manager.get_preset(selected_preset_name)
+                    preset_name = selected_preset_name
+                    self.logger.info(
+                        "🌤️ Weather: %s (%s) -> preset '%s'",
+                        weather_decision.condition,
+                        temp_str,
+                        selected_preset_name,
+                    )
+
         try:
-            preset = self.preset_manager.get_preset(preset_name or self.active_preset)
+            if not preset_name and self.active_playlist:
+                playlist_step = self.playlist_manager.advance(self.active_playlist)
+                if playlist_step:
+                    playlist_name_in_use = self.active_playlist
+                    selected_preset_name = playlist_step.preset
+                    preset = self.preset_manager.get_preset(selected_preset_name)
+                    step_label = playlist_step.title or playlist_step.preset
+                    self.logger.info(
+                        "Playlist step selezionato: %s -> %s",
+                        playlist_name_in_use,
+                        step_label,
+                    )
+                else:
+                    self.logger.warning(
+                        "Playlist '%s' non contiene elementi utilizzabili; la disattivo.",
+                        self.active_playlist,
+                    )
+                    self.playlist_manager.reset(self.active_playlist)
+                    self.active_playlist = None
+                    playlist_name_in_use = None
+                    selected_preset_name = preset_name or self.active_preset
+                    preset = self.preset_manager.get_preset(selected_preset_name)
+
+            self.active_preset = preset.name
+
             if provider_override:
                 provider = normalize_provider(provider_override)
+            elif playlist_step and playlist_step.provider:
+                provider = normalize_provider(playlist_step.provider)
             elif RotateProviders:
                 provider = self.pick_active_provider(preset)
             else:
@@ -679,7 +831,7 @@ class WallpaperApp:
 
             self.logger.info(f"Wallpaper change triggered by: {trigger}")
             manager = self._create_desktop_controller()
-            monitors = []
+            monitors: List[Dict[str, int]] = []
             if manager:
                 try:
                     monitors = manager.enumerate_monitors()
@@ -694,7 +846,13 @@ class WallpaperApp:
                     self.logger.error(f"Monitor enumeration via user32 failed: {error}")
                     monitors = []
 
-            tasks = self._build_tasks(monitors, preset, provider)
+            tasks = self._build_tasks(
+                monitors,
+                preset,
+                provider,
+                playlist_name=playlist_name_in_use,
+                playlist_step=playlist_step,
+            )
 
             if use_cache and self.apply_cached_wallpaper(trigger):
                 return
@@ -717,11 +875,24 @@ class WallpaperApp:
                 self.cache_manager.prune()
         except Exception as e:
             self.logger.exception(f"Error changing wallpaper: {e}")
+            results = []
 
         providers_used = sorted({prov for _, prov in results}) or [provider]
+        if playlist_name_in_use:
+            if step_label:
+                playlist_suffix = f", playlist '{playlist_name_in_use}' step '{step_label}'"
+            else:
+                playlist_suffix = f", playlist '{playlist_name_in_use}'"
+        else:
+            playlist_suffix = ""
+        weather_suffix = (
+            f", weather '{weather_decision.condition}' -> {weather_decision.mode} '{weather_decision.value}'"
+            if weather_decision
+            else ""
+        )
         self.logger.info(
             f"Wallpaper updated ({trigger}) using providers {', '.join(providers_used)} "
-            f"and preset '{preset.name}'."
+            f"and preset '{preset.name}'{playlist_suffix}{weather_suffix}."
         )
         for line, _ in results:
             self.logger.info(f" - {line}")
@@ -730,7 +901,18 @@ class WallpaperApp:
             preset.name,
             trigger,
             providers_used,
-            results=[{"label": line, "provider": prov} for line, prov in results],
+            results=[
+                {
+                    "label": line,
+                    "provider": prov,
+                    "playlist": playlist_name_in_use or "",
+                    "playlist_entry": step_label or "",
+                    "weather_condition": weather_decision.condition if weather_decision else "",
+                    "weather_target": weather_decision.value if weather_decision else "",
+                }
+                for line, prov in results
+            ],
+            note=weather_note,
         )
 
     def apply_cached_wallpaper(self, trigger: str) -> bool:
@@ -807,30 +989,68 @@ class WallpaperApp:
             print(f"Per-monitor wallpaper initialization failed: {error}")
             return None
 
-    def _build_tasks(self, monitors: List[Dict[str, int]], preset: Preset, provider: str) -> List[Dict]:
+    def _build_tasks(
+        self,
+        monitors: List[Dict[str, int]],
+        preset: Preset,
+        provider: str,
+        playlist_name: Optional[str] = None,
+        playlist_step: Optional[PlaylistStep] = None,
+    ) -> List[Dict]:
         tasks: List[Dict] = []
         multi_monitor = len(monitors) > 1
+        base_query_override = playlist_step.query if playlist_step else None
 
         for index, monitor in enumerate(monitors or [{}]):
-            override = self.preset_manager.get_monitor_override(index)
-            monitor_preset = self.preset_manager.get_preset(override.get("preset") or preset.name)
-            monitor_provider = normalize_provider(override.get("provider") or provider)
+            base_override = self.preset_manager.get_monitor_override(index)
+            playlist_override = (
+                playlist_step.resolve_monitor_override(index, base_override.get("name"))
+                if playlist_step
+                else {}
+            )
 
-            query_override = override.get("query") or None
+            effective_override = dict(base_override)
+            for key, value in playlist_override.items():
+                if value:
+                    effective_override[key] = value
+
+            label = (
+                playlist_override.get("name")
+                or effective_override.get("name")
+                or base_override.get("name")
+                or f"Monitor {index + 1}"
+            )
+
+            preset_name = effective_override.get("preset") or preset.name
+            monitor_preset = self.preset_manager.get_preset(preset_name)
+
+            provider_value = (
+                playlist_override.get("provider")
+                or effective_override.get("provider")
+                or (playlist_step.provider if playlist_step else None)
+                or provider
+            )
+            monitor_provider = normalize_provider(provider_value)
+
+            query_override = (
+                playlist_override.get("query")
+                or effective_override.get("query")
+                or base_query_override
+            )
             query = self.preset_manager.pick_query(monitor_preset, query_override)
 
             wallhaven_settings = monitor_preset.get_wallhaven_settings()
-            if override.get("wallhaven_sorting"):
-                wallhaven_settings["sorting"] = normalize_wallhaven_sorting(override["wallhaven_sorting"])
-            if override.get("wallhaven_top_range"):
-                wallhaven_settings["top_range"] = normalize_wallhaven_top_range(override["wallhaven_top_range"])
-            if override.get("purity"):
-                wallhaven_settings["purity"] = override["purity"]
-            if override.get("screen_resolution"):
-                wallhaven_settings["atleast"] = override["screen_resolution"]
+            if effective_override.get("wallhaven_sorting"):
+                wallhaven_settings["sorting"] = normalize_wallhaven_sorting(effective_override["wallhaven_sorting"])
+            if effective_override.get("wallhaven_top_range"):
+                wallhaven_settings["top_range"] = normalize_wallhaven_top_range(effective_override["wallhaven_top_range"])
+            if effective_override.get("purity"):
+                wallhaven_settings["purity"] = effective_override["purity"]
+            if effective_override.get("screen_resolution"):
+                wallhaven_settings["atleast"] = effective_override["screen_resolution"]
 
             provider_candidates = [monitor_provider]
-            if not override.get("provider"):
+            if not effective_override.get("provider"):
                 for candidate in monitor_preset.providers:
                     normalized = ensure_provider(candidate)
                     if normalized not in provider_candidates:
@@ -845,8 +1065,10 @@ class WallpaperApp:
                 "provider": monitor_provider,
                 "provider_candidates": provider_candidates,
                 "monitor": monitor,
-                "label": override.get("name") or f"Monitor {index + 1}",
+                "label": label,
                 "query": query,
+                "playlist": playlist_name,
+                "playlist_entry": (playlist_step.title or playlist_step.preset) if playlist_step else None,
                 "wallhaven": wallhaven_settings,
                 "pexels": monitor_preset.get_pexels_settings(),
                 "reddit": monitor_preset.get_reddit_settings(),
@@ -869,6 +1091,7 @@ class WallpaperApp:
                 normalized = ensure_provider(candidate)
                 if normalized not in fallback_candidates:
                     fallback_candidates.append(normalized)
+            fallback_query = preset.build_query(base_query_override)
             tasks.append(
                 {
                     "preset": preset.name,
@@ -876,7 +1099,9 @@ class WallpaperApp:
                     "provider_candidates": fallback_candidates,
                     "monitor": None,
                     "label": "All monitors",
-                    "query": preset.build_query(None),
+                    "query": fallback_query,
+                    "playlist": playlist_name,
+                    "playlist_entry": (playlist_step.title or playlist_step.preset) if playlist_step else None,
                     "wallhaven": preset.get_wallhaven_settings(),
                     "pexels": preset.get_pexels_settings(),
                     "reddit": preset.get_reddit_settings(),
@@ -1001,6 +1226,12 @@ class WallpaperApp:
             "monitor": task["label"],
             "source_info": source_info,
         }
+        playlist_name = task.get("playlist")
+        if playlist_name:
+            metadata["playlist"] = playlist_name
+        playlist_entry = task.get("playlist_entry")
+        if playlist_entry:
+            metadata["playlist_entry"] = playlist_entry
         return url, source_info, metadata
 
     def _fetch_wallhaven(self, task: Dict) -> Tuple[str, str]:

@@ -193,6 +193,18 @@ WeatherRotationSettings = {
     },
 }
 
+# Weather overlay settings - draws weather info on wallpaper
+WeatherOverlaySettings = {
+    "enabled": True,
+    "position": "top-right",  # "top-left", "top-right", "bottom-left", "bottom-right"
+    "opacity": 0.60,  # 0.0 to 1.0
+    "font_size": 48,  # Font size for main text
+    "padding": 45,  # Padding around text
+    "background_blur": 20,  # Blur radius (0 = no blur, higher = more blur)
+    "background_color": (20, 20, 30, 180),  # Semi-transparent dark background (R, G, B, Alpha 0-255)
+    "text_color": (255, 255, 255),  # White text for better contrast
+}
+
 # Optional per-monitor overrides. The list order matches your physical monitors.
 # Each entry can override provider/query/preset just for that screen.
 # Leave provider empty to inherit the active rotation, leave preset empty to use the default preset.

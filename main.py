@@ -29,12 +29,14 @@ from config import (
     RotateProviders,
     SchedulerSettings,
     WeatherRotationSettings,
+    WeatherOverlaySettings,
 )
 from playlist_manager import PlaylistManager, PlaylistStep
 from preset_manager import Preset, PresetManager
 from scheduler_service import SchedulerService
 from tray_app import TrayApp
 from weather_rotation import WeatherDecision, WeatherRotationController
+from weather_overlay import WeatherOverlay, WeatherInfo
 
 SPI_SETDESKWALLPAPER = 20
 SPIF_UPDATEINIFILE = 0x01
@@ -334,6 +336,8 @@ class WallpaperApp:
         self.preset_manager = PresetManager()
         self.playlist_manager = PlaylistManager()
         self.weather_rotation = WeatherRotationController(WeatherRotationSettings, self.logger)
+        self.weather_overlay = WeatherOverlay(WeatherOverlaySettings)
+        self.last_weather_decision: Optional[WeatherDecision] = None
         self.active_preset = self.preset_manager.default_name
         self.active_playlist = self.playlist_manager.default_name
 
@@ -752,6 +756,7 @@ class WallpaperApp:
 
         if not preset_name and self.weather_rotation.enabled:
             weather_decision = self.weather_rotation.evaluate(trigger)
+            self.last_weather_decision = weather_decision  # Save for overlay
             if weather_decision:
                 weather_note = (
                     f"{weather_decision.provider}:{weather_decision.condition}->{weather_decision.mode}:{weather_decision.value}"
@@ -1141,40 +1146,83 @@ class WallpaperApp:
         home_dir = os.path.expanduser("~")
         composite = None
         results: List[Tuple[str, str]] = []
+        temp_overlay_paths: List[str] = []
 
-        monitors = [task["monitor"] for task in tasks if task.get("monitor")]
-        if not monitors:
-            return []
+        try:
+            monitors = [task["monitor"] for task in tasks if task.get("monitor")]
+            if not monitors:
+                return []
 
-        min_left = min(m.get("left", 0) for m in monitors)
-        min_top = min(m.get("top", 0) for m in monitors)
-        max_right = max(m.get("right", m.get("left", 0) + m.get("width", 0)) for m in monitors)
-        max_bottom = max(m.get("bottom", m.get("top", 0) + m.get("height", 0)) for m in monitors)
+            min_left = min(m.get("left", 0) for m in monitors)
+            min_top = min(m.get("top", 0) for m in monitors)
+            max_right = max(m.get("right", m.get("left", 0) + m.get("width", 0)) for m in monitors)
+            max_bottom = max(m.get("bottom", m.get("top", 0) + m.get("height", 0)) for m in monitors)
 
-        total_width = max_right - min_left
-        total_height = max_bottom - min_top
-        composite = Image.new("RGB", (total_width, total_height), color=(0, 0, 0))
+            total_width = max_right - min_left
+            total_height = max_bottom - min_top
+            composite = Image.new("RGB", (total_width, total_height), color=(0, 0, 0))
 
-        for index, task in enumerate(tasks):
-            url, source_info, metadata = self._resolve_wallpaper(task)
-            download_path = os.path.join(home_dir, DOWNLOAD_TEMPLATE.format(index=index))
-            self._download_wallpaper(url, download_path)
-            cached_path = self.cache_manager.store(download_path, metadata) or download_path
-            if cached_path != download_path:
-                with suppress(OSError):
-                    os.remove(download_path)
-            image = self._render_image(cached_path, task["target_size"])
-            monitor = task["monitor"]
-            offset_x = monitor.get("left", 0) - min_left
-            offset_y = monitor.get("top", 0) - min_top
-            composite.paste(image, (offset_x, offset_y))
-            results.append((f"{task['label']}: {source_info}", metadata["provider"]))
+            for index, task in enumerate(tasks):
+                url, source_info, metadata = self._resolve_wallpaper(task)
+                download_path = os.path.join(home_dir, DOWNLOAD_TEMPLATE.format(index=index))
+                self._download_wallpaper(url, download_path)
+                cached_path = self.cache_manager.store(download_path, metadata) or download_path
+                if cached_path != download_path:
+                    with suppress(OSError):
+                        os.remove(download_path)
 
-        span_path = os.path.join(home_dir, SPAN_BMP_NAME)
-        composite.save(span_path, "BMP")
-        composite.close()
-        self._apply_legacy_wallpaper(span_path)
-        return results
+                # Apply weather overlay if enabled
+                source_for_render = cached_path
+                if self.weather_overlay.enabled and self.last_weather_decision:
+                    wd = self.last_weather_decision
+                    weather_info = WeatherInfo(
+                        city=WeatherRotationSettings.get("location", {}).get("city", ""),
+                        country=WeatherRotationSettings.get("location", {}).get("country", ""),
+                        condition=wd.condition,
+                        temperature=wd.temperature or 0.0,
+                        humidity=wd.details.get("humidity"),
+                        wind_speed=wd.details.get("wind_speed"),
+                        icon=wd.condition,
+                        feels_like=wd.details.get("feels_like"),
+                        pressure=wd.details.get("pressure"),
+                        clouds=wd.details.get("clouds"),
+                        description=wd.details.get("description")
+                    )
+
+                    import time, tempfile
+                    timestamp = int(time.time() * 1000)
+                    temp_overlay_path = os.path.join(
+                        tempfile.gettempdir(),
+                        f"wallpaper_span_overlay_{index}_{timestamp}.jpg"
+                    )
+
+                    if self.weather_overlay.apply_overlay(cached_path, temp_overlay_path, weather_info, task["target_size"]):
+                        source_for_render = temp_overlay_path
+                        temp_overlay_paths.append(temp_overlay_path)
+                        self.logger.info(f"✨ Weather overlay applied to monitor {index + 1} in span mode")
+
+                image = self._render_image(source_for_render, task["target_size"])
+                monitor = task["monitor"]
+                offset_x = monitor.get("left", 0) - min_left
+                offset_y = monitor.get("top", 0) - min_top
+                composite.paste(image, (offset_x, offset_y))
+                results.append((f"{task['label']}: {source_info}", metadata["provider"]))
+
+            span_path = os.path.join(home_dir, SPAN_BMP_NAME)
+            composite.save(span_path, "BMP")
+            composite.close()
+            self._apply_legacy_wallpaper(span_path)
+            return results
+
+        finally:
+            # Clean up temporary overlay files
+            for temp_path in temp_overlay_paths:
+                if os.path.exists(temp_path):
+                    try:
+                        os.remove(temp_path)
+                        self.logger.debug(f"Cleaned up span overlay: {temp_path}")
+                    except OSError as e:
+                        self.logger.warning(f"Failed to clean up span overlay {temp_path}: {e}")
 
     def _apply_span_cached(self, monitors: List[Dict[str, int]], entries: List[Optional[Dict]]) -> List[str]:
         min_left = min(m.get("left", 0) for m in monitors)
@@ -1577,11 +1625,69 @@ class WallpaperApp:
 
     def _convert_to_bmp(self, source_path: str, target_name: str, size: Optional[Tuple[int, int]]) -> str:
         target_path = os.path.join(os.path.expanduser("~"), target_name)
-        image = self._render_image(source_path, size)
+        temp_overlay_path = None
+
         try:
-            image.save(target_path, "BMP")
+            # Apply weather overlay if enabled and weather data is available
+            if self.weather_overlay.enabled and self.last_weather_decision:
+                wd = self.last_weather_decision
+                weather_info = WeatherInfo(
+                    city=WeatherRotationSettings.get("location", {}).get("city", ""),
+                    country=WeatherRotationSettings.get("location", {}).get("country", ""),
+                    condition=wd.condition,
+                    temperature=wd.temperature or 0.0,
+                    humidity=wd.details.get("humidity"),
+                    wind_speed=wd.details.get("wind_speed"),
+                    icon=wd.condition,
+                    feels_like=wd.details.get("feels_like"),
+                    pressure=wd.details.get("pressure"),
+                    clouds=wd.details.get("clouds"),
+                    description=wd.details.get("description")
+                )
+
+                # Create temporary path for overlayed image
+                # Use unique name to avoid conflicts between monitors
+                import time
+                base_name = os.path.basename(source_path)
+                timestamp = int(time.time() * 1000)
+                # Use system temp directory for overlay files
+                import tempfile
+                temp_dir = tempfile.gettempdir()
+                temp_overlay_path = os.path.join(
+                    temp_dir,
+                    f"wallpaper_overlay_{timestamp}_{base_name}"
+                )
+
+                # Pass monitor size for consistent positioning
+                # The overlay module will handle resizing and positioning
+                if self.weather_overlay.apply_overlay(source_path, temp_overlay_path, weather_info, size):
+                    source_path = temp_overlay_path
+                    temp_str = f"{wd.temperature:.1f}°C" if wd.temperature is not None else "N/A"
+                    self.logger.info(f"✨ Weather overlay applied: {wd.condition} {temp_str}")
+                else:
+                    self.logger.warning("Failed to apply weather overlay")
+                    temp_overlay_path = None
+            elif self.weather_overlay.enabled:
+                self.logger.debug("Weather overlay enabled but no weather data available")
+
+            # Render and save the image (with or without overlay)
+            # Note: _render_image already handles resizing, so we don't resize again
+            # to avoid double-processing the overlayed image
+            image = self._render_image(source_path, None if temp_overlay_path else size)
+            try:
+                image.save(target_path, "BMP")
+            finally:
+                image.close()
+
         finally:
-            image.close()
+            # Clean up temporary overlay file
+            if temp_overlay_path and os.path.exists(temp_overlay_path):
+                try:
+                    os.remove(temp_overlay_path)
+                    self.logger.debug(f"Cleaned up temp overlay: {temp_overlay_path}")
+                except OSError as e:
+                    self.logger.warning(f"Failed to clean up temp overlay {temp_overlay_path}: {e}")
+
         return target_path
 
     def _apply_legacy_wallpaper(self, image_path: str) -> None:

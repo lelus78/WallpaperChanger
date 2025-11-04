@@ -28,6 +28,29 @@ class TrayApp:
         self._thread: Optional[threading.Thread] = None
 
     def _build_menu(self) -> pystray.Menu:
+        playlist_definitions = self.controller.playlist_manager.list_playlists()
+        if playlist_definitions:
+            playlist_items: List[pystray.MenuItem] = [
+                pystray.MenuItem(
+                    "Disattiva playlist",
+                    self._clear_playlist,
+                    checked=lambda item: self.controller.active_playlist is None,
+                ),
+                pystray.Menu.SEPARATOR,
+            ]
+            playlist_items.extend(
+                pystray.MenuItem(
+                    playlist.title,
+                    self._make_set_playlist(playlist.name),
+                    checked=self._make_playlist_checked(playlist.name),
+                )
+                for playlist in playlist_definitions
+            )
+        else:
+            playlist_items = [
+                pystray.MenuItem("Nessuna playlist disponibile", lambda *_: None, enabled=False)
+            ]
+
         return pystray.Menu(
             pystray.MenuItem("Change Wallpaper", self._change_now),
             pystray.Menu.SEPARATOR,
@@ -43,6 +66,10 @@ class TrayApp:
                         for preset in self.controller.preset_manager.list_presets()
                     ]
                 ),
+            ),
+            pystray.MenuItem(
+                "Playlists",
+                pystray.Menu(*playlist_items),
             ),
             pystray.MenuItem(
                 "Toggle Scheduler",
@@ -91,6 +118,18 @@ class TrayApp:
     def _make_preset_checked(self, preset_name: str):
         return lambda item: self.controller.active_preset == preset_name
 
+    def _make_set_playlist(self, playlist_name: str):
+        def handler(icon: pystray.Icon, item: pystray.MenuItem) -> None:
+            self.controller.set_active_playlist(playlist_name)
+
+        return handler
+
+    def _make_playlist_checked(self, playlist_name: str):
+        return lambda item: self.controller.active_playlist == playlist_name
+
+    def _clear_playlist(self, icon: pystray.Icon, item: pystray.MenuItem) -> None:
+        self.controller.set_active_playlist(None)
+
     def _quit(self, icon: pystray.Icon, item: pystray.MenuItem) -> None:
         self.controller.stop()
         icon.stop()
@@ -103,7 +142,12 @@ class TrayApp:
 
     def stop(self) -> None:
         if self.icon:
-            self.icon.stop()
-        if self._thread:
-            self._thread.join(timeout=2)
-            self._thread = None
+            try:
+                self.icon.stop()
+            except RuntimeError:
+                # Icon loop might already be stopping; ignore race conditions
+                pass
+        thread = self._thread
+        self._thread = None
+        if thread and thread.is_alive() and threading.current_thread() != thread:
+            thread.join(timeout=2)

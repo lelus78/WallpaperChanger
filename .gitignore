@@ -31,3 +31,18 @@ wallpaperchanger.signal
 # OS files
 .DS_Store
 Thumbs.db
+.claude/settings.local.json
+
+# One-time setup/fix scripts (already applied)
+apply_weather_config.py
+enable_weather_quick.py
+fix_playlist_providers.py
+update_config_final.py
+playlists_config.txt
+
+# Test scripts (keep locally for debugging)
+test_*.py
+
+# Development/experimental files
+weather_rotation.py
+playlist_manager.py

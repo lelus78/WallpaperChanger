@@ -22,6 +22,8 @@ provider_state.json
 wallpaperchanger.pid
 wallpaperchanger.log
 wallpaperchanger.signal
+gui_config.pid
+gui_restore.signal
 
 # IDE and editor files
 .vscode/

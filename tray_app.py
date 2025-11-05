@@ -101,6 +101,23 @@ class TrayApp:
         """Open the settings GUI"""
         try:
             script_dir = os.path.dirname(os.path.abspath(__file__))
+            gui_signal = os.path.join(script_dir, "gui_restore.signal")
+
+            # Check if GUI is already running by looking for the signal file monitoring
+            # If GUI is running, just create the restore signal
+            # Otherwise, launch a new instance
+            gui_pid_file = os.path.join(script_dir, "gui_config.pid")
+
+            if os.path.exists(gui_pid_file):
+                # GUI might be running (minimized), try to restore it
+                try:
+                    with open(gui_signal, 'w') as f:
+                        f.write('restore')
+                    return
+                except Exception:
+                    pass
+
+            # GUI not running or signal failed, launch new instance
             gui_script = os.path.join(script_dir, "gui_config.py")
             subprocess.Popen(["pythonw", gui_script], shell=False)
         except Exception as e:

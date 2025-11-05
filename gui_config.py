@@ -50,7 +50,12 @@ class WallpaperConfigGUI:
         base_path = Path(__file__).parent
         self.config_path = base_path / "config.py"
         self.provider_state_path = base_path / "provider_state.json"
+        self.gui_signal_path = base_path / "gui_restore.signal"
+        self.gui_pid_path = base_path / "gui_config.pid"
         self.config_data: Dict[str, Any] = {}
+
+        # Write GUI PID file
+        self._write_gui_pid()
 
         cache_dir = CacheSettings.get("directory") or os.path.join(
             os.path.expanduser("~"), "WallpaperChangerCache"
@@ -77,6 +82,9 @@ class WallpaperConfigGUI:
         self._ensure_main_app_running()
 
         self._create_widgets()
+
+        # Start monitoring for restore signals
+        self._start_restore_monitor()
 
     def _setup_theme(self) -> None:
         """Setup modern theme with custom styles"""
@@ -246,10 +254,32 @@ class WallpaperConfigGUI:
     def _ensure_main_app_running(self) -> None:
         """Ensure the main wallpaper app is running, start it if not"""
         import subprocess
+        import psutil
 
         pid_path = Path(__file__).parent / "wallpaperchanger.pid"
 
-        if not pid_path.exists():
+        # Check if PID file exists and if the process is actually running
+        process_running = False
+        if pid_path.exists():
+            try:
+                with open(pid_path, 'r') as f:
+                    pid = int(f.read().strip())
+                # Verify the process is actually running
+                if psutil.pid_exists(pid):
+                    process_running = True
+                else:
+                    # Process not running, clean up stale PID file
+                    pid_path.unlink()
+                    print("Removed stale PID file")
+            except Exception as e:
+                print(f"Error checking PID file: {e}")
+                # Remove invalid PID file
+                try:
+                    pid_path.unlink()
+                except:
+                    pass
+
+        if not process_running:
             # Automatically start the service without asking
             try:
                 # Start the main app in background
@@ -276,8 +306,19 @@ class WallpaperConfigGUI:
 
     def _check_app_status(self) -> bool:
         """Check if main app is running"""
+        import psutil
+
         pid_path = Path(__file__).parent / "wallpaperchanger.pid"
-        return pid_path.exists()
+        if not pid_path.exists():
+            return False
+
+        try:
+            with open(pid_path, 'r') as f:
+                pid = int(f.read().strip())
+            # Verify the process is actually running
+            return psutil.pid_exists(pid)
+        except Exception:
+            return False
 
     def _update_status_indicator(self) -> None:
         """Update the status indicator"""
@@ -464,23 +505,74 @@ class WallpaperConfigGUI:
                 messagebox.showerror("Error", f"Failed to start service: {e}")
 
     def _on_closing(self) -> None:
-        """Handle GUI closing - stop service if we started it"""
+        """Handle GUI closing - minimize to tray instead of closing"""
+        # Hide the window instead of closing it
+        self.root.withdraw()
+
+    def _restore_window(self) -> None:
+        """Restore the window from tray"""
+        self.root.deiconify()
+        self.root.lift()
+        self.root.focus_force()
+
+    def _write_gui_pid(self) -> None:
+        """Write GUI PID file"""
+        try:
+            with open(self.gui_pid_path, "w", encoding="utf-8") as f:
+                f.write(str(os.getpid()))
+        except Exception as e:
+            print(f"Error writing GUI PID file: {e}")
+
+    def _remove_gui_pid(self) -> None:
+        """Remove GUI PID file"""
+        try:
+            if self.gui_pid_path.exists():
+                self.gui_pid_path.unlink()
+        except Exception as e:
+            print(f"Error removing GUI PID file: {e}")
+
+    def _start_restore_monitor(self) -> None:
+        """Monitor for restore signals to show the window"""
+        def check_restore_signal():
+            if self.gui_signal_path.exists():
+                try:
+                    self.gui_signal_path.unlink()
+                    self._restore_window()
+                except Exception as e:
+                    print(f"Error processing restore signal: {e}")
+            # Check again in 500ms
+            self.root.after(500, check_restore_signal)
+
+        # Start monitoring
+        check_restore_signal()
+
+    def _quit_application(self) -> None:
+        """Quit the GUI application completely - stop service if we started it"""
+        # Remove GUI PID file
+        self._remove_gui_pid()
+
         if hasattr(self, 'service_started_by_gui') and self.service_started_by_gui:
-            # We started the service, so stop it when closing
+            # We started the service, so stop it when quitting
             try:
                 pid_path = Path(__file__).parent / "wallpaperchanger.pid"
                 if pid_path.exists():
                     with open(pid_path, 'r') as f:
                         pid = int(f.read().strip())
 
-                    # Kill the process
+                    # Verify the process is actually running before killing it
                     import subprocess
-                    if os.name == 'nt':
-                        subprocess.run(['taskkill', '/F', '/PID', str(pid)], capture_output=True)
-                    else:
-                        os.kill(pid, 9)
+                    import psutil
 
-                    print("Wallpaper Changer service stopped")
+                    if psutil.pid_exists(pid):
+                        if os.name == 'nt':
+                            subprocess.run(['taskkill', '/F', '/PID', str(pid)], capture_output=True)
+                        else:
+                            os.kill(pid, 9)
+                        print("Wallpaper Changer service stopped")
+                    else:
+                        # Process not running, clean up stale PID file
+                        pid_path.unlink()
+                        print("Removed stale PID file")
             except Exception as e:
                 print(f"Error stopping service: {e}")
 
@@ -712,7 +804,8 @@ class WallpaperConfigGUI:
 
         ttk.Button(button_frame, text="💾 Save Configuration", command=self._save_config).pack(side=tk.LEFT, padx=5)
         ttk.Button(button_frame, text="🔄 Reload Config", command=self._reload_config).pack(side=tk.LEFT, padx=5)
-        ttk.Button(button_frame, text="❌ Close", command=self._on_closing).pack(side=tk.RIGHT, padx=5)
+        ttk.Button(button_frame, text="🚪 Quit", command=self._quit_application).pack(side=tk.RIGHT, padx=5)
+        ttk.Button(button_frame, text="➖ Minimize to Tray", command=self._on_closing).pack(side=tk.RIGHT, padx=5)
 
         # Handle window close button (X)
         self.root.protocol("WM_DELETE_WINDOW", self._on_closing)

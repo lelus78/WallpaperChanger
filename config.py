@@ -54,8 +54,9 @@ WallhavenSorting = "toplist"
 WallhavenTopRange = "1M"
 
 # Cache settings: directory (blank for default), max_items (int), enable_offline_rotation (bool)
+# Use None or empty string for default location (~\WallpaperChangerCache)
 CacheSettings = {
-    "directory": r"C:\Users\EmanueleO\WallpaperChangerCache",
+    "directory": "",  # Empty = use default location in user's home directory
     "max_items": 60,
     "enable_offline_rotation": True,
 }

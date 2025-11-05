@@ -488,53 +488,6 @@ class WallpaperConfigGUI:
         self.root.quit()
         self.root.destroy()
 
-    def _minimize_to_tray(self) -> None:
-        """Minimize GUI to system tray"""
-        try:
-            import pystray
-            from PIL import Image, ImageDraw
-
-            # Hide the main window
-            self.root.withdraw()
-
-            # Create tray icon
-            def create_icon():
-                image = Image.new('RGB', (64, 64), color=(137, 180, 250))
-                draw = ImageDraw.Draw(image)
-                draw.rectangle([10, 10, 54, 54], fill=(30, 30, 46))
-                draw.text((20, 20), "WC", fill=(137, 180, 250))
-                return image
-
-            def on_show(icon, item):
-                icon.stop()
-                self.root.deiconify()
-
-            def on_quit(icon, item):
-                icon.stop()
-                self.root.deiconify()
-                self._on_closing()
-
-            icon = pystray.Icon(
-                "Wallpaper Config",
-                create_icon(),
-                "Wallpaper Changer Config",
-                menu=pystray.Menu(
-                    pystray.MenuItem("Show", on_show, default=True),
-                    pystray.MenuItem("Quit", on_quit)
-                )
-            )
-
-            icon.run()
-
-        except ImportError:
-            messagebox.showwarning(
-                "Feature Not Available",
-                "Minimize to tray requires 'pystray' module.\n\n"
-                "Install it with: pip install pystray"
-            )
-        except Exception as e:
-            messagebox.showerror("Error", f"Failed to minimize to tray: {e}")
-
     def _load_config(self) -> None:
         """Load current configuration from config.py"""
         try:
@@ -759,7 +712,6 @@ class WallpaperConfigGUI:
 
         ttk.Button(button_frame, text="💾 Save Configuration", command=self._save_config).pack(side=tk.LEFT, padx=5)
         ttk.Button(button_frame, text="🔄 Reload Config", command=self._reload_config).pack(side=tk.LEFT, padx=5)
-        ttk.Button(button_frame, text="📥 Minimize to Tray", command=self._minimize_to_tray).pack(side=tk.RIGHT, padx=5)
         ttk.Button(button_frame, text="❌ Close", command=self._on_closing).pack(side=tk.RIGHT, padx=5)
 
         # Handle window close button (X)

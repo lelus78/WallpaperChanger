@@ -8,6 +8,7 @@ __pycache__/
 # Temporary files
 temp.txt
 *.tmp
+nul
 
 # Cache and wallpaper files
 WallpaperChangerCache/

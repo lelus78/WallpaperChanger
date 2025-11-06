@@ -14,21 +14,28 @@ from config import CacheSettings
 
 
 class WallpaperConfigGUI:
-    # Modern color scheme
+    # Modern color scheme - Enhanced with gradients
     COLORS = {
-        'bg_primary': '#1e1e2e',
-        'bg_secondary': '#2a2a3e',
-        'bg_tertiary': '#363650',
-        'accent': '#89b4fa',
-        'accent_hover': '#b4befe',
-        'success': '#a6e3a1',
-        'warning': '#f9e2af',
-        'error': '#f38ba8',
-        'text_primary': '#cdd6f4',
-        'text_secondary': '#a6adc8',
-        'text_muted': '#6c7086',
-        'border': '#45475a',
-        'shadow': '#11111b',
+        'bg_primary': '#1a1a2e',
+        'bg_secondary': '#16213e',
+        'bg_tertiary': '#0f3460',
+        'bg_gradient_start': '#1a1a2e',
+        'bg_gradient_end': '#16213e',
+        'accent': '#e94560',
+        'accent_hover': '#ff6b81',
+        'accent_secondary': '#00d9ff',
+        'success': '#00e676',
+        'warning': '#ffd93d',
+        'error': '#ff6b81',
+        'text_primary': '#f0f0f0',
+        'text_secondary': '#b0b0b0',
+        'text_muted': '#808080',
+        'border': '#2d3561',
+        'border_light': '#3d4571',
+        'shadow': '#0a0a14',
+        'card_bg': '#1e2749',
+        'card_hover': '#252f5a',
+        'overlay_bg': 'rgba(0, 0, 0, 0.7)',
     }
 
     def __init__(self, root: tk.Tk) -> None:
@@ -1042,16 +1049,19 @@ class WallpaperConfigGUI:
         change_wallpaper_frame = tk.Frame(self.cache_frame, bg=self.COLORS['bg_primary'])
         change_wallpaper_frame.pack(fill=tk.X, padx=15, pady=15)
 
-        # Top row: Main change button
+        # Top row: Main change button with modern design
         change_btn = tk.Button(change_wallpaper_frame,
-                              text="🎨 CHANGE WALLPAPER NOW",
+                              text="⚡ CHANGE WALLPAPER NOW",
                               bg=self.COLORS['accent'],
-                              fg='#1e1e2e',
-                              font=('Segoe UI', 12, 'bold'),
+                              fg='white',
+                              font=('Segoe UI', 14, 'bold'),
                               relief=tk.FLAT,
                               cursor='hand2',
-                              padx=30,
-                              pady=15,
+                              padx=40,
+                              pady=18,
+                              borderwidth=0,
+                              activebackground=self.COLORS['accent_hover'],
+                              activeforeground='white',
                               command=self._change_wallpaper_now)
         change_btn.pack(fill=tk.X)
 
@@ -2367,20 +2377,29 @@ OPENWEATHER_API_KEY={openweather_key}
                 row += 1
 
     def _create_thumbnail(self, entry: Dict[str, Any], row: int, col: int) -> None:
-        """Create a thumbnail widget for a wallpaper"""
-        # Create modern card frame
+        """Create a modern thumbnail card widget for a wallpaper"""
+        # Create modern card frame with rounded border effect
         card = tk.Frame(self.gallery_frame,
-                       bg=self.COLORS['bg_secondary'],
+                       bg=self.COLORS['card_bg'],
                        highlightbackground=self.COLORS['border'],
-                       highlightthickness=1)
-        card.grid(row=row, column=col, padx=8, pady=8, sticky=tk.NSEW)
+                       highlightthickness=2,
+                       relief=tk.FLAT)
+        card.grid(row=row, column=col, padx=10, pady=10, sticky=tk.NSEW)
 
-        # Add hover effect
+        # Add hover effect with smooth transition
         def on_enter(e):
-            card.configure(highlightbackground=self.COLORS['accent'], highlightthickness=2)
+            card.configure(
+                highlightbackground=self.COLORS['accent'],
+                highlightthickness=3,
+                bg=self.COLORS['card_hover']
+            )
 
         def on_leave(e):
-            card.configure(highlightbackground=self.COLORS['border'], highlightthickness=1)
+            card.configure(
+                highlightbackground=self.COLORS['border'],
+                highlightthickness=2,
+                bg=self.COLORS['card_bg']
+            )
 
         card.bind("<Enter>", on_enter)
         card.bind("<Leave>", on_leave)
@@ -2399,62 +2418,89 @@ OPENWEATHER_API_KEY={openweather_key}
                 img = Image.open(image_path)
                 original_size = img.size  # Store original resolution
 
-                # Create thumbnail
-                img.thumbnail((250, 150), Image.Resampling.LANCZOS if hasattr(Image, 'Resampling') else Image.LANCZOS)
+                # Create larger thumbnail for better visual impact
+                img.thumbnail((320, 180), Image.Resampling.LANCZOS if hasattr(Image, 'Resampling') else Image.LANCZOS)
                 photo = ImageTk.PhotoImage(img)
 
                 # Cache the thumbnail
                 self.thumbnail_cache[image_path] = (photo, original_size)
 
-            # Image container
-            img_container = tk.Frame(card, bg=self.COLORS['bg_tertiary'])
-            img_container.pack(padx=8, pady=8, fill=tk.BOTH, expand=True)
+            # Image container with dark background
+            img_container = tk.Frame(card, bg=self.COLORS['shadow'], relief=tk.FLAT)
+            img_container.pack(padx=0, pady=0, fill=tk.BOTH, expand=True)
 
             # Image label
-            img_label = tk.Label(img_container, image=photo, bg=self.COLORS['bg_tertiary'])
+            img_label = tk.Label(img_container, image=photo, bg=self.COLORS['shadow'])
             img_label.image = photo  # Keep reference
-            img_label.pack()
+            img_label.pack(padx=5, pady=5)
 
-            # Info container
-            info_container = tk.Frame(card, bg=self.COLORS['bg_secondary'])
-            info_container.pack(fill=tk.X, padx=10, pady=5)
+            # Info container with badge layout
+            info_container = tk.Frame(card, bg=self.COLORS['card_bg'])
+            info_container.pack(fill=tk.X, padx=12, pady=8)
 
-            # Resolution label with icon
-            resolution_text = f"📐 {original_size[0]}x{original_size[1]}"
-            resolution_label = tk.Label(info_container, text=resolution_text,
-                                       bg=self.COLORS['bg_secondary'],
-                                       fg=self.COLORS['accent'],
-                                       font=('Segoe UI', 9, 'bold'))
-            resolution_label.pack(anchor=tk.W)
+            # Top row: Badges (resolution and provider)
+            badges_row = tk.Frame(info_container, bg=self.COLORS['card_bg'])
+            badges_row.pack(fill=tk.X, pady=(0, 6))
 
-            # Info label
-            info_text = entry.get("source_info", "Unknown")[:45]
+            # Resolution badge - modern pill style
+            resolution_text = f"{original_size[0]}x{original_size[1]}"
+            resolution_badge = tk.Label(badges_row, text=resolution_text,
+                                       bg=self.COLORS['accent_secondary'],
+                                       fg=self.COLORS['shadow'],
+                                       font=('Segoe UI', 8, 'bold'),
+                                       padx=8, pady=3,
+                                       relief=tk.FLAT)
+            resolution_badge.pack(side=tk.LEFT, padx=(0, 5))
+
+            # Provider badge
+            provider = entry.get("provider", "Unknown")
+            provider_colors = {
+                'wallhaven': self.COLORS['success'],
+                'pexels': self.COLORS['warning'],
+                'reddit': self.COLORS['error'],
+                'unsplash': self.COLORS['accent'],
+            }
+            provider_bg = provider_colors.get(provider.lower(), self.COLORS['text_muted'])
+
+            provider_badge = tk.Label(badges_row, text=provider.upper(),
+                                     bg=provider_bg,
+                                     fg=self.COLORS['shadow'],
+                                     font=('Segoe UI', 8, 'bold'),
+                                     padx=8, pady=3,
+                                     relief=tk.FLAT)
+            provider_badge.pack(side=tk.LEFT)
+
+            # Info text (source info) - more subtle
+            info_text = entry.get("source_info", "Unknown")[:40]
             info_label = tk.Label(info_container, text=info_text,
-                                 bg=self.COLORS['bg_secondary'],
-                                 fg=self.COLORS['text_secondary'],
+                                 bg=self.COLORS['card_bg'],
+                                 fg=self.COLORS['text_muted'],
                                  font=('Segoe UI', 8),
-                                 wraplength=250,
+                                 wraplength=300,
                                  justify=tk.LEFT)
-            info_label.pack(anchor=tk.W, pady=(2, 5))
+            info_label.pack(anchor=tk.W, pady=(0, 5))
 
-            # Apply button with accent style - shows monitor selection menu
-            apply_btn = tk.Button(card, text="✨ Apply to Monitor",
+            # Apply button with modern gradient-like style
+            apply_btn = tk.Button(card, text="SET AS WALLPAPER",
                                  bg=self.COLORS['accent'],
-                                 fg='#1e1e2e',
+                                 fg='white',
                                  font=('Segoe UI', 9, 'bold'),
                                  relief=tk.FLAT,
                                  cursor='hand2',
-                                 padx=15,
-                                 pady=8,
+                                 padx=20,
+                                 pady=10,
+                                 borderwidth=0,
+                                 activebackground=self.COLORS['accent_hover'],
+                                 activeforeground='white',
                                  command=lambda e=entry: self._show_monitor_selection(e))
-            apply_btn.pack(pady=(0, 10), padx=10, fill=tk.X)
+            apply_btn.pack(pady=(0, 12), padx=12, fill=tk.X)
 
-            # Button hover effect
+            # Button hover effect with smooth transition
             def btn_enter(e):
-                apply_btn.configure(bg=self.COLORS['accent_hover'])
+                apply_btn.configure(bg=self.COLORS['accent_hover'], pady=11)
 
             def btn_leave(e):
-                apply_btn.configure(bg=self.COLORS['accent'])
+                apply_btn.configure(bg=self.COLORS['accent'], pady=10)
 
             apply_btn.bind("<Enter>", btn_enter)
             apply_btn.bind("<Leave>", btn_leave)

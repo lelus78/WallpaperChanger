@@ -765,15 +765,23 @@ class ModernWallpaperGUI:
 
     def _add_help_text(self, parent, text):
         """Add a help/description text below a setting"""
-        help_label = ctk.CTkLabel(
+        help_frame = ctk.CTkFrame(
             parent,
-            text=f"  {text}",
+            fg_color=self.COLORS['main_bg'],
+            corner_radius=6
+        )
+        help_frame.pack(fill="x", padx=25, pady=(2, 12))
+
+        help_label = ctk.CTkLabel(
+            help_frame,
+            text=f"ℹ️  {text}",
             text_color=self.COLORS['text_muted'],
             font=ctk.CTkFont(size=11),
-            wraplength=700,
-            justify="left"
+            wraplength=680,
+            justify="left",
+            anchor="w"
         )
-        help_label.pack(fill="x", padx=25, pady=(0, 8), anchor="w")
+        help_label.pack(fill="x", padx=10, pady=6, anchor="w")
 
     def _add_section_header(self, parent, text):
         """Add a section header (e.g., ADVANCED SETTINGS)"""

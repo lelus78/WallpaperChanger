@@ -1174,13 +1174,49 @@ class ModernWallpaperGUI:
 
     def _apply_wallpaper_to_monitor(self, item: Dict[str, Any], monitor_selection: str = "All Monitors",
                                    monitors_list: list = None, monitor_idx: int = None):
-        """Apply selected wallpaper to specified monitor"""
+        """Apply selected wallpaper to specified monitor with weather overlay if enabled"""
         try:
             from main import DesktopWallpaperController
             from PIL import Image
+            from weather_overlay import WeatherOverlay, WeatherInfo
+            from weather_rotation import WeatherRotationController
+            from config import WeatherOverlaySettings, WeatherRotationSettings
             import ctypes
+            import tempfile
+            import time
 
             wallpaper_path = item.get("path")
+            original_path = wallpaper_path
+
+            # Apply weather overlay if enabled
+            weather_overlay = WeatherOverlay(WeatherOverlaySettings)
+            if weather_overlay.enabled:
+                try:
+                    # Get current weather
+                    weather_controller = WeatherRotationController(WeatherRotationSettings, None)
+                    weather_decision = weather_controller.get_weather_decision()
+
+                    if weather_decision and weather_decision.weather_info:
+                        # Create temporary file for overlay
+                        temp_dir = tempfile.gettempdir()
+                        timestamp = int(time.time())
+                        base_name = Path(wallpaper_path).stem
+                        temp_overlay_path = os.path.join(temp_dir, f"wallpaper_overlay_gui_{timestamp}_{base_name}.jpg")
+
+                        # Get monitor size for proper overlay positioning
+                        target_size = None
+                        if monitor_selection != "All Monitors" and monitors_list and monitor_idx is not None:
+                            mon = monitors_list[monitor_idx]
+                            target_size = (mon.get('width'), mon.get('height'))
+
+                        # Apply overlay
+                        if weather_overlay.apply_overlay(wallpaper_path, temp_overlay_path,
+                                                        weather_decision.weather_info, target_size):
+                            wallpaper_path = temp_overlay_path
+                            print(f"Weather overlay applied: {weather_decision.weather_info.condition}")
+                except Exception as e:
+                    print(f"Failed to apply weather overlay: {e}")
+                    # Continue with original wallpaper if overlay fails
 
             # Convert to BMP if needed
             if not wallpaper_path.lower().endswith('.bmp'):

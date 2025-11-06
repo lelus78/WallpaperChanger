@@ -59,9 +59,6 @@ class ModernWallpaperGUI:
         self._create_sidebar()
         self._create_main_content()
 
-        # Load wallpapers
-        self._load_wallpapers()
-
     def _create_sidebar(self):
         """Create modern sidebar with navigation"""
         self.sidebar = ctk.CTkFrame(
@@ -124,20 +121,18 @@ class ModernWallpaperGUI:
         self.main_frame.grid_rowconfigure(1, weight=1)
         self.main_frame.grid_columnconfigure(0, weight=1)
 
-        # Header with controls
-        self._create_header()
-
-        # Scrollable frame for wallpaper grid
-        self.scrollable_frame = ctk.CTkScrollableFrame(
+        # Content container that will be swapped
+        self.content_container = ctk.CTkFrame(
             self.main_frame,
             corner_radius=0,
             fg_color="transparent"
         )
-        self.scrollable_frame.grid(row=1, column=0, sticky="nsew", padx=20, pady=20)
+        self.content_container.grid(row=0, column=0, sticky="nsew")
+        self.content_container.grid_rowconfigure(1, weight=1)
+        self.content_container.grid_columnconfigure(0, weight=1)
 
-        # Configure grid for wallpaper cards (4 columns)
-        for i in range(4):
-            self.scrollable_frame.grid_columnconfigure(i, weight=1, uniform="col")
+        # Show wallpapers view by default
+        self._show_wallpapers_view()
 
     def _create_header(self):
         """Create header with search and filters"""
@@ -183,12 +178,68 @@ class ModernWallpaperGUI:
         )
         sort_menu.pack(side="left")
 
-    def _load_wallpapers(self):
-        """Load wallpapers from cache"""
+    def _show_wallpapers_view(self):
+        """Show wallpapers gallery view"""
+        # Header with controls
+        header = ctk.CTkFrame(
+            self.content_container,
+            height=80,
+            corner_radius=0,
+            fg_color="transparent"
+        )
+        header.grid(row=0, column=0, sticky="ew", padx=20, pady=(20, 0))
+        header.grid_columnconfigure(1, weight=1)
+
+        # Title
+        title = ctk.CTkLabel(
+            header,
+            text="Wallpaper Gallery",
+            font=ctk.CTkFont(size=24, weight="bold"),
+            text_color=self.COLORS['text_light']
+        )
+        title.grid(row=0, column=0, sticky="w", padx=10)
+
+        # Filter dropdown
+        filter_frame = ctk.CTkFrame(header, fg_color="transparent")
+        filter_frame.grid(row=0, column=2, sticky="e", padx=10)
+
+        ctk.CTkLabel(
+            filter_frame,
+            text="Sort:",
+            text_color=self.COLORS['text_muted'],
+            font=ctk.CTkFont(size=13)
+        ).pack(side="left", padx=(0, 10))
+
+        self.sort_var = ctk.StringVar(value="Newest First")
+        sort_menu = ctk.CTkOptionMenu(
+            filter_frame,
+            variable=self.sort_var,
+            values=["Newest First", "Oldest First", "Highest Resolution"],
+            width=150,
+            fg_color=self.COLORS['card_bg'],
+            button_color=self.COLORS['accent'],
+            button_hover_color=self.COLORS['sidebar_hover'],
+            command=self._on_sort_change
+        )
+        sort_menu.pack(side="left")
+
+        # Scrollable frame for wallpaper grid
+        scrollable_frame = ctk.CTkScrollableFrame(
+            self.content_container,
+            corner_radius=0,
+            fg_color="transparent"
+        )
+        scrollable_frame.grid(row=1, column=0, sticky="nsew", padx=20, pady=20)
+
+        # Configure grid for wallpaper cards (4 columns)
+        for i in range(4):
+            scrollable_frame.grid_columnconfigure(i, weight=1, uniform="col")
+
+        # Load wallpapers from cache
         if not self.cache_manager or not self.cache_manager.has_items():
             # Show empty state
             empty_label = ctk.CTkLabel(
-                self.scrollable_frame,
+                scrollable_frame,
                 text="No wallpapers in cache.\nDownload some wallpapers first!",
                 font=ctk.CTkFont(size=16),
                 text_color=self.COLORS['text_muted']
@@ -203,13 +254,13 @@ class ModernWallpaperGUI:
         for idx, item in enumerate(items[:20]):  # Limit to 20 for now
             row = idx // 4
             col = idx % 4
-            self._create_wallpaper_card(item, row, col)
+            self._create_wallpaper_card(item, row, col, scrollable_frame)
 
-    def _create_wallpaper_card(self, item: Dict[str, Any], row: int, col: int):
+    def _create_wallpaper_card(self, item: Dict[str, Any], row: int, col: int, parent):
         """Create a modern wallpaper card with rounded corners"""
         # Card container
         card = ctk.CTkFrame(
-            self.scrollable_frame,
+            parent,
             fg_color=self.COLORS['card_bg'],
             corner_radius=15,  # Rounded corners!
             border_width=0
@@ -312,8 +363,22 @@ class ModernWallpaperGUI:
         """Handle navigation"""
         self.active_view = view
         self._update_nav_buttons()
-        print(f"Navigated to: {view}")
-        # TODO: Switch content based on view
+
+        # Clear current content
+        for widget in self.content_container.winfo_children():
+            widget.destroy()
+
+        # Show appropriate view
+        if view == "Home":
+            self._show_home_view()
+        elif view == "Wallpapers":
+            self._show_wallpapers_view()
+        elif view == "Downloads":
+            self._show_downloads_view()
+        elif view == "Settings":
+            self._show_settings_view()
+        elif view == "Feedback":
+            self._show_feedback_view()
 
     def _update_nav_buttons(self):
         """Update navigation button styles"""
@@ -327,6 +392,140 @@ class ModernWallpaperGUI:
         """Handle sort change"""
         print(f"Sort changed to: {choice}")
         # TODO: Re-sort and reload wallpapers
+
+    def _show_home_view(self):
+        """Show home/dashboard view"""
+        title = ctk.CTkLabel(
+            self.content_container,
+            text="Welcome to Wallpaper Changer",
+            font=ctk.CTkFont(size=32, weight="bold"),
+            text_color=self.COLORS['text_light']
+        )
+        title.pack(pady=(50, 20))
+
+        subtitle = ctk.CTkLabel(
+            self.content_container,
+            text="Manage and customize your desktop wallpapers",
+            font=ctk.CTkFont(size=16),
+            text_color=self.COLORS['text_muted']
+        )
+        subtitle.pack(pady=(0, 40))
+
+        # Quick action button
+        change_btn = ctk.CTkButton(
+            self.content_container,
+            text="CHANGE WALLPAPER NOW",
+            font=ctk.CTkFont(size=16, weight="bold"),
+            fg_color=self.COLORS['accent'],
+            hover_color=self.COLORS['sidebar_hover'],
+            corner_radius=12,
+            height=50,
+            width=300,
+            command=lambda: self._navigate("Wallpapers")
+        )
+        change_btn.pack(pady=20)
+
+    def _show_downloads_view(self):
+        """Show downloads view"""
+        title = ctk.CTkLabel(
+            self.content_container,
+            text="Downloads",
+            font=ctk.CTkFont(size=24, weight="bold"),
+            text_color=self.COLORS['text_light']
+        )
+        title.pack(pady=(30, 10), padx=20, anchor="w")
+
+        info = ctk.CTkLabel(
+            self.content_container,
+            text="Downloaded wallpapers will appear here.\nThis feature is coming soon!",
+            font=ctk.CTkFont(size=14),
+            text_color=self.COLORS['text_muted']
+        )
+        info.pack(pady=100)
+
+    def _show_settings_view(self):
+        """Show settings view"""
+        scrollable = ctk.CTkScrollableFrame(
+            self.content_container,
+            fg_color="transparent"
+        )
+        scrollable.pack(fill="both", expand=True, padx=20, pady=20)
+
+        title = ctk.CTkLabel(
+            scrollable,
+            text="Settings",
+            font=ctk.CTkFont(size=24, weight="bold"),
+            text_color=self.COLORS['text_light']
+        )
+        title.pack(pady=(10, 20), anchor="w")
+
+        # Settings sections
+        sections = [
+            ("Appearance", ["Dark Mode", "Accent Color", "Font Size"]),
+            ("Wallpaper", ["Auto-change Interval", "Fit Mode", "Screen"]),
+            ("Cache", ["Cache Size", "Clear Cache", "Cache Location"]),
+        ]
+
+        for section_title, options in sections:
+            section_frame = ctk.CTkFrame(scrollable, fg_color=self.COLORS['card_bg'], corner_radius=12)
+            section_frame.pack(fill="x", pady=10)
+
+            section_label = ctk.CTkLabel(
+                section_frame,
+                text=section_title,
+                font=ctk.CTkFont(size=16, weight="bold"),
+                text_color=self.COLORS['text_light']
+            )
+            section_label.pack(pady=15, padx=20, anchor="w")
+
+            for option in options:
+                option_label = ctk.CTkLabel(
+                    section_frame,
+                    text=option,
+                    text_color=self.COLORS['text_muted']
+                )
+                option_label.pack(pady=8, padx=20, anchor="w")
+
+    def _show_feedback_view(self):
+        """Show feedback view"""
+        title = ctk.CTkLabel(
+            self.content_container,
+            text="Feedback",
+            font=ctk.CTkFont(size=24, weight="bold"),
+            text_color=self.COLORS['text_light']
+        )
+        title.pack(pady=(30, 10), padx=20, anchor="w")
+
+        info = ctk.CTkLabel(
+            self.content_container,
+            text="Send us your feedback and suggestions!",
+            font=ctk.CTkFont(size=14),
+            text_color=self.COLORS['text_muted']
+        )
+        info.pack(pady=(0, 30), padx=20, anchor="w")
+
+        # Feedback form
+        form_frame = ctk.CTkFrame(self.content_container, fg_color=self.COLORS['card_bg'], corner_radius=12)
+        form_frame.pack(fill="both", expand=True, padx=20, pady=(0, 20))
+
+        textbox = ctk.CTkTextbox(
+            form_frame,
+            height=200,
+            fg_color=self.COLORS['main_bg'],
+            border_width=0,
+            corner_radius=8
+        )
+        textbox.pack(fill="both", expand=True, padx=20, pady=20)
+
+        send_btn = ctk.CTkButton(
+            form_frame,
+            text="Send Feedback",
+            fg_color=self.COLORS['accent'],
+            hover_color=self.COLORS['sidebar_hover'],
+            corner_radius=8,
+            height=40
+        )
+        send_btn.pack(pady=(0, 20), padx=20, fill="x")
 
     def run(self):
         """Start the GUI"""

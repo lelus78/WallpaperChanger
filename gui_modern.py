@@ -245,9 +245,9 @@ class ModernWallpaperGUI:
         )
         scrollable_frame.grid(row=1, column=0, sticky="nsew", padx=20, pady=20)
 
-        # Configure grid for wallpaper cards (3 columns for better visibility)
+        # Configure grid for wallpaper cards (3 columns, fixed width to prevent stretching)
         for i in range(3):
-            scrollable_frame.grid_columnconfigure(i, weight=1, uniform="col", minsize=360)
+            scrollable_frame.grid_columnconfigure(i, weight=0, minsize=360)
 
         # Load wallpapers from cache
         if not self.cache_manager or not self.cache_manager.has_items():
@@ -272,14 +272,17 @@ class ModernWallpaperGUI:
 
     def _create_wallpaper_card(self, item: Dict[str, Any], row: int, col: int, parent):
         """Create a modern wallpaper card with rounded corners"""
-        # Card container
+        # Card container - FIXED: removed sticky to prevent horizontal stretching
         card = ctk.CTkFrame(
             parent,
             fg_color=self.COLORS['card_bg'],
-            corner_radius=15,  # Rounded corners!
-            border_width=0
+            corner_radius=15,
+            border_width=0,
+            width=340,
+            height=320
         )
-        card.grid(row=row, column=col, padx=10, pady=10, sticky="nsew")
+        card.grid(row=row, column=col, padx=10, pady=10)
+        card.grid_propagate(False)  # Prevent card from shrinking
 
         try:
             # Load image
@@ -451,7 +454,7 @@ class ModernWallpaperGUI:
         gallery_btn.pack(pady=10)
 
     def _show_settings_view(self):
-        """Show settings view with real config options"""
+        """Show fully editable settings"""
         scrollable = ctk.CTkScrollableFrame(
             self.content_container,
             fg_color="transparent"
@@ -466,80 +469,313 @@ class ModernWallpaperGUI:
         )
         title.pack(pady=(10, 20), anchor="w")
 
-        # Note about opening full settings
-        note_frame = ctk.CTkFrame(scrollable, fg_color=self.COLORS['card_bg'], corner_radius=12)
-        note_frame.pack(fill="x", pady=(0, 20))
+        # Load current config
+        from config import (Provider, RotateProviders, Query, PurityLevel, ScreenResolution,
+                           WallhavenSorting, WallhavenTopRange, PexelsMode, RedditSettings,
+                           SchedulerSettings, CacheSettings, KeyBind)
 
-        note_text = ctk.CTkLabel(
-            note_frame,
-            text="⚠️  For advanced configuration, use the detailed settings GUI",
-            font=ctk.CTkFont(size=13),
-            text_color=self.COLORS['warning'] if 'warning' in self.COLORS else self.COLORS['text_muted']
-        )
-        note_text.pack(pady=15, padx=20)
+        # Initialize setting variables
+        self.provider_var = ctk.StringVar(value=Provider)
+        self.rotate_providers_var = ctk.BooleanVar(value=RotateProviders)
+        self.query_var = ctk.StringVar(value=Query)
+        self.purity_var = ctk.StringVar(value=PurityLevel)
+        self.resolution_var = ctk.StringVar(value=ScreenResolution)
+        self.sorting_var = ctk.StringVar(value=WallhavenSorting)
+        self.toprange_var = ctk.StringVar(value=WallhavenTopRange)
+        self.pexels_mode_var = ctk.StringVar(value=PexelsMode)
 
-        open_full_btn = ctk.CTkButton(
-            note_frame,
-            text="Open Full Settings GUI",
+        # Reddit settings
+        reddit_subreddits = ", ".join(RedditSettings.get("subreddits", ["wallpapers"]))
+        self.reddit_subreddits_var = ctk.StringVar(value=reddit_subreddits)
+        self.reddit_sort_var = ctk.StringVar(value=RedditSettings.get("sort", "hot"))
+        self.reddit_time_var = ctk.StringVar(value=RedditSettings.get("time_filter", "day"))
+        self.reddit_limit_var = ctk.IntVar(value=RedditSettings.get("limit", 60))
+        self.reddit_score_var = ctk.IntVar(value=RedditSettings.get("min_score", 0))
+        self.reddit_nsfw_var = ctk.BooleanVar(value=RedditSettings.get("allow_nsfw", False))
+
+        # Scheduler settings
+        self.scheduler_enabled_var = ctk.BooleanVar(value=SchedulerSettings.get("enabled", True))
+        self.interval_var = ctk.IntVar(value=SchedulerSettings.get("interval_minutes", 45))
+        self.jitter_var = ctk.IntVar(value=SchedulerSettings.get("jitter_minutes", 10))
+
+        # Cache settings
+        self.cache_max_var = ctk.IntVar(value=CacheSettings.get("max_items", 60))
+        self.cache_offline_var = ctk.BooleanVar(value=CacheSettings.get("enable_offline_rotation", True))
+
+        # Hotkey
+        self.keybind_var = ctk.StringVar(value=KeyBind)
+
+        # Provider Settings
+        self._create_setting_section(scrollable, "Provider Settings", [
+            ("Default Provider:", self._create_dropdown(scrollable, self.provider_var,
+                ["wallhaven", "pexels", "reddit"])),
+            ("Search Query:", self._create_entry(scrollable, self.query_var)),
+            ("Enable Provider Rotation", self._create_checkbox(scrollable, self.rotate_providers_var)),
+        ])
+
+        # Wallhaven Settings
+        self._create_setting_section(scrollable, "Wallhaven Settings", [
+            ("Purity Level:", self._create_dropdown(scrollable, self.purity_var,
+                ["100", "110", "111", "010", "001"])),
+            ("Min Resolution:", self._create_dropdown(scrollable, self.resolution_var,
+                ["1920x1080", "2560x1440", "3440x1440", "3840x2160"])),
+            ("Sorting:", self._create_dropdown(scrollable, self.sorting_var,
+                ["random", "toplist", "favorites", "views"])),
+            ("Top Range:", self._create_dropdown(scrollable, self.toprange_var,
+                ["1d", "3d", "1w", "1M", "3M", "6M", "1y"])),
+        ])
+
+        # Pexels Settings
+        self._create_setting_section(scrollable, "Pexels Settings", [
+            ("Mode:", self._create_dropdown(scrollable, self.pexels_mode_var,
+                ["search", "curated"])),
+        ])
+
+        # Reddit Settings
+        self._create_setting_section(scrollable, "Reddit Settings", [
+            ("Subreddits (comma separated):", self._create_entry(scrollable, self.reddit_subreddits_var)),
+            ("Sort:", self._create_dropdown(scrollable, self.reddit_sort_var,
+                ["hot", "new", "rising", "top", "controversial"])),
+            ("Time Filter:", self._create_dropdown(scrollable, self.reddit_time_var,
+                ["hour", "day", "week", "month", "year", "all"])),
+            ("Posts per fetch:", self._create_spinbox(scrollable, self.reddit_limit_var, 10, 100)),
+            ("Minimum upvotes:", self._create_spinbox(scrollable, self.reddit_score_var, 0, 100000)),
+            ("Include NSFW posts", self._create_checkbox(scrollable, self.reddit_nsfw_var)),
+        ])
+
+        # Scheduler Settings
+        self._create_setting_section(scrollable, "Scheduler Settings", [
+            ("Enable Scheduler", self._create_checkbox(scrollable, self.scheduler_enabled_var)),
+            ("Interval (minutes):", self._create_spinbox(scrollable, self.interval_var, 1, 1440)),
+            ("Jitter (minutes):", self._create_spinbox(scrollable, self.jitter_var, 0, 60)),
+        ])
+
+        # Cache Settings
+        self._create_setting_section(scrollable, "Cache Settings", [
+            ("Max Cache Items:", self._create_spinbox(scrollable, self.cache_max_var, 10, 500)),
+            ("Enable Offline Rotation", self._create_checkbox(scrollable, self.cache_offline_var)),
+        ])
+
+        # Hotkey Settings
+        self._create_setting_section(scrollable, "Hotkey Settings", [
+            ("Hotkey:", self._create_entry(scrollable, self.keybind_var)),
+        ])
+
+        # Save button
+        save_btn = ctk.CTkButton(
+            scrollable,
+            text="SAVE SETTINGS",
+            font=ctk.CTkFont(size=14, weight="bold"),
             fg_color=self.COLORS['accent'],
             hover_color=self.COLORS['sidebar_hover'],
-            corner_radius=8,
-            height=35,
-            command=self._open_full_settings
+            corner_radius=10,
+            height=45,
+            command=self._save_settings
         )
-        open_full_btn.pack(pady=(0, 15), padx=20, fill="x")
+        save_btn.pack(fill="x", pady=(20, 10))
 
-        # Quick Settings sections
-        sections_data = [
-            ("Provider Settings", [
-                ("Default Provider", "Provider to use for wallpapers"),
-                ("Enable Rotation", "Rotate between multiple providers"),
-                ("Search Query", "Search term for wallpapers"),
-            ]),
-            ("Cache Settings", [
-                ("Max Items", "Maximum wallpapers in cache"),
-                ("Enable Offline Rotation", "Use cached wallpapers when offline"),
-                ("Cache Directory", "Location of cached wallpapers"),
-            ]),
-            ("Scheduler", [
-                ("Auto-change Enabled", "Automatically change wallpaper"),
-                ("Change Interval", "Time between wallpaper changes"),
-            ]),
-        ]
+    def _create_setting_section(self, parent, title, items):
+        """Create a settings section with title and items"""
+        section_frame = ctk.CTkFrame(parent, fg_color=self.COLORS['card_bg'], corner_radius=12)
+        section_frame.pack(fill="x", pady=10)
 
-        for section_title, options in sections_data:
-            section_frame = ctk.CTkFrame(scrollable, fg_color=self.COLORS['card_bg'], corner_radius=12)
-            section_frame.pack(fill="x", pady=10)
+        section_label = ctk.CTkLabel(
+            section_frame,
+            text=title,
+            font=ctk.CTkFont(size=16, weight="bold"),
+            text_color=self.COLORS['text_light']
+        )
+        section_label.pack(pady=15, padx=20, anchor="w")
 
-            section_label = ctk.CTkLabel(
-                section_frame,
-                text=section_title,
-                font=ctk.CTkFont(size=16, weight="bold"),
+        for item in items:
+            if len(item) == 2:
+                label_text, widget = item
+                row_frame = ctk.CTkFrame(section_frame, fg_color="transparent")
+                row_frame.pack(fill="x", padx=20, pady=8)
+
+                if not isinstance(widget, ctk.CTkCheckBox):
+                    label = ctk.CTkLabel(
+                        row_frame,
+                        text=label_text,
+                        text_color=self.COLORS['text_light'],
+                        font=ctk.CTkFont(size=13)
+                    )
+                    label.pack(side="left", anchor="w")
+                    widget.pack(side="right", anchor="e")
+                else:
+                    widget.pack(side="left", anchor="w")
+
+        ctk.CTkLabel(section_frame, text="").pack(pady=5)
+
+    def _create_entry(self, parent, variable):
+        """Create an entry widget"""
+        return ctk.CTkEntry(parent, textvariable=variable, width=250,
+                          fg_color=self.COLORS['card_hover'],
+                          border_color=self.COLORS['accent'],
+                          text_color=self.COLORS['text_light'])
+
+    def _create_dropdown(self, parent, variable, values):
+        """Create a dropdown widget"""
+        return ctk.CTkComboBox(parent, variable=variable, values=values, width=250,
+                             fg_color=self.COLORS['card_hover'],
+                             border_color=self.COLORS['accent'],
+                             button_color=self.COLORS['accent'],
+                             text_color=self.COLORS['text_light'],
+                             dropdown_fg_color=self.COLORS['card_bg'])
+
+    def _create_spinbox(self, parent, variable, from_, to):
+        """Create a spinbox widget using entry + buttons"""
+        frame = ctk.CTkFrame(parent, fg_color="transparent")
+
+        entry = ctk.CTkEntry(frame, textvariable=variable, width=150,
+                           fg_color=self.COLORS['card_hover'],
+                           border_color=self.COLORS['accent'],
+                           text_color=self.COLORS['text_light'])
+        entry.pack(side="left", padx=5)
+
+        btn_frame = ctk.CTkFrame(frame, fg_color="transparent")
+        btn_frame.pack(side="left")
+
+        def increment():
+            try:
+                val = variable.get()
+                if val < to:
+                    variable.set(val + 1)
+            except:
+                variable.set(from_)
+
+        def decrement():
+            try:
+                val = variable.get()
+                if val > from_:
+                    variable.set(val - 1)
+            except:
+                variable.set(from_)
+
+        up_btn = ctk.CTkButton(btn_frame, text="▲", width=30, height=20,
+                             fg_color=self.COLORS['accent'],
+                             command=increment)
+        up_btn.pack(side="top")
+
+        down_btn = ctk.CTkButton(btn_frame, text="▼", width=30, height=20,
+                               fg_color=self.COLORS['accent'],
+                               command=decrement)
+        down_btn.pack(side="top")
+
+        return frame
+
+    def _create_checkbox(self, parent, variable):
+        """Create a checkbox widget"""
+        return ctk.CTkCheckBox(parent, text="", variable=variable,
+                             fg_color=self.COLORS['accent'],
+                             hover_color=self.COLORS['sidebar_hover'],
+                             checkmark_color=self.COLORS['text_light'])
+
+    def _save_settings(self):
+        """Save all settings to config.py"""
+        try:
+            config_path = Path(__file__).parent / "config.py"
+
+            # Read current config
+            with open(config_path, 'r', encoding='utf-8') as f:
+                lines = f.readlines()
+
+            # Update values in config
+            new_lines = []
+            for line in lines:
+                if line.startswith('Provider = '):
+                    new_lines.append(f'Provider = "{self.provider_var.get()}"\n')
+                elif line.startswith('RotateProviders = '):
+                    new_lines.append(f'RotateProviders = {self.rotate_providers_var.get()}\n')
+                elif line.startswith('Query = '):
+                    new_lines.append(f'Query = "{self.query_var.get()}"\n')
+                elif line.startswith('PurityLevel = '):
+                    new_lines.append(f'PurityLevel = "{self.purity_var.get()}"\n')
+                elif line.startswith('ScreenResolution = '):
+                    new_lines.append(f'ScreenResolution = "{self.resolution_var.get()}"\n')
+                elif line.startswith('WallhavenSorting = '):
+                    new_lines.append(f'WallhavenSorting = "{self.sorting_var.get()}"\n')
+                elif line.startswith('WallhavenTopRange = '):
+                    new_lines.append(f'WallhavenTopRange = "{self.toprange_var.get()}"\n')
+                elif line.startswith('PexelsMode = '):
+                    new_lines.append(f'PexelsMode = "{self.pexels_mode_var.get()}"\n')
+                elif line.startswith('KeyBind = '):
+                    new_lines.append(f'KeyBind = "{self.keybind_var.get()}"\n')
+                elif '"subreddits":' in line:
+                    subreddits = [s.strip() for s in self.reddit_subreddits_var.get().split(',')]
+                    new_lines.append(f'    "subreddits": {subreddits},\n')
+                elif '"sort":' in line and 'RedditSettings' in ''.join(new_lines[-5:]):
+                    new_lines.append(f'    "sort": "{self.reddit_sort_var.get()}",\n')
+                elif '"time_filter":' in line:
+                    new_lines.append(f'    "time_filter": "{self.reddit_time_var.get()}",\n')
+                elif '"limit":' in line and 'RedditSettings' in ''.join(new_lines[-10:]):
+                    new_lines.append(f'    "limit": {self.reddit_limit_var.get()},\n')
+                elif '"min_score":' in line:
+                    new_lines.append(f'    "min_score": {self.reddit_score_var.get()},\n')
+                elif '"allow_nsfw":' in line:
+                    new_lines.append(f'    "allow_nsfw": {self.reddit_nsfw_var.get()},\n')
+                elif '"enabled":' in line and 'SchedulerSettings' in ''.join(new_lines[-5:]):
+                    new_lines.append(f'    "enabled": {self.scheduler_enabled_var.get()},\n')
+                elif '"interval_minutes":' in line:
+                    new_lines.append(f'    "interval_minutes": {self.interval_var.get()},\n')
+                elif '"jitter_minutes":' in line:
+                    new_lines.append(f'    "jitter_minutes": {self.jitter_var.get()},\n')
+                elif '"max_items":' in line:
+                    new_lines.append(f'    "max_items": {self.cache_max_var.get()},\n')
+                elif '"enable_offline_rotation":' in line:
+                    new_lines.append(f'    "enable_offline_rotation": {self.cache_offline_var.get()},\n')
+                else:
+                    new_lines.append(line)
+
+            # Write updated config
+            with open(config_path, 'w', encoding='utf-8') as f:
+                f.writelines(new_lines)
+
+            # Show success message
+            success_dialog = ctk.CTkToplevel(self.root)
+            success_dialog.title("Settings Saved")
+            success_dialog.geometry("400x150")
+            success_dialog.transient(self.root)
+            success_dialog.grab_set()
+
+            msg = ctk.CTkLabel(
+                success_dialog,
+                text="Settings saved successfully!\nRestart the wallpaper service for changes to take effect.",
+                font=ctk.CTkFont(size=13),
                 text_color=self.COLORS['text_light']
             )
-            section_label.pack(pady=15, padx=20, anchor="w")
+            msg.pack(pady=30)
 
-            for opt_name, opt_desc in options:
-                opt_row = ctk.CTkFrame(section_frame, fg_color="transparent")
-                opt_row.pack(fill="x", padx=20, pady=5)
+            ok_btn = ctk.CTkButton(
+                success_dialog,
+                text="OK",
+                fg_color=self.COLORS['accent'],
+                command=success_dialog.destroy
+            )
+            ok_btn.pack(pady=10)
 
-                opt_label = ctk.CTkLabel(
-                    opt_row,
-                    text=opt_name,
-                    text_color=self.COLORS['text_light'],
-                    font=ctk.CTkFont(size=13)
-                )
-                opt_label.pack(side="left", anchor="w")
+        except Exception as e:
+            error_dialog = ctk.CTkToplevel(self.root)
+            error_dialog.title("Error")
+            error_dialog.geometry("400x150")
+            error_dialog.transient(self.root)
+            error_dialog.grab_set()
 
-                opt_info = ctk.CTkLabel(
-                    opt_row,
-                    text=opt_desc,
-                    text_color=self.COLORS['text_muted'],
-                    font=ctk.CTkFont(size=11)
-                )
-                opt_info.pack(side="right", anchor="e")
+            msg = ctk.CTkLabel(
+                error_dialog,
+                text=f"Failed to save settings:\n{str(e)}",
+                font=ctk.CTkFont(size=13),
+                text_color=self.COLORS['warning']
+            )
+            msg.pack(pady=30)
 
-            ctk.CTkLabel(section_frame, text="").pack(pady=5)  # Spacer
+            ok_btn = ctk.CTkButton(
+                error_dialog,
+                text="OK",
+                fg_color=self.COLORS['accent'],
+                command=error_dialog.destroy
+            )
+            ok_btn.pack(pady=10)
 
     def _show_logs_view(self):
         """Show logs view"""

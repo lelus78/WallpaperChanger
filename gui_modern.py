@@ -132,7 +132,7 @@ class ModernWallpaperGUI:
             fg_color=self.COLORS['main_bg']
         )
         self.main_frame.grid(row=0, column=1, sticky="nsew", padx=0, pady=0)
-        self.main_frame.grid_rowconfigure(1, weight=1)
+        self.main_frame.grid_rowconfigure(0, weight=1)  # Changed from row 1 to row 0
         self.main_frame.grid_columnconfigure(0, weight=1)
 
         # Content container that will be swapped
@@ -141,9 +141,10 @@ class ModernWallpaperGUI:
             corner_radius=0,
             fg_color="transparent"
         )
-        self.content_container.grid(row=0, column=0, sticky="nsew")
-        self.content_container.grid_rowconfigure(1, weight=1)
-        self.content_container.grid_columnconfigure(0, weight=1)
+        self.content_container.grid(row=0, column=0, sticky="nsew", padx=0, pady=0)
+        self.content_container.grid_rowconfigure(0, weight=0)  # Header row - no expansion
+        self.content_container.grid_rowconfigure(1, weight=1)  # Content row - expands
+        self.content_container.grid_columnconfigure(0, weight=1)  # Make content expand horizontally
 
         # Show wallpapers view by default
         self._show_wallpapers_view()

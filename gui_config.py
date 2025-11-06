@@ -40,8 +40,8 @@ class WallpaperConfigGUI:
 
     def __init__(self, root: tk.Tk) -> None:
         self.root = root
-        self.root.title("Wallpaper Changer - Configuration")
-        self.root.geometry("1100x750")
+        self.root.title("Wallpaper Changer")
+        self.root.geometry("1400x850")
 
         # Set window icon if available
         try:
@@ -746,31 +746,31 @@ class WallpaperConfigGUI:
         status_container.pack(side=tk.RIGHT, padx=15, pady=8)
 
         self.status_label = tk.Label(status_container,
-                                     text="🟢 Service Running",
+                                     text="● Service Running",
                                      bg=self.COLORS['bg_secondary'],
                                      fg=self.COLORS['success'],
-                                     font=('Segoe UI', 9, 'bold'))
+                                     font=('Segoe UI', 9))
         self.status_label.pack(side=tk.LEFT, padx=5)
 
         # Start/Stop button
         self.service_btn = tk.Button(status_container,
-                                     text="⚙️ Service",
+                                     text="SERVICE",
                                      bg=self.COLORS['bg_tertiary'],
                                      fg=self.COLORS['text_primary'],
                                      font=('Segoe UI', 8, 'bold'),
                                      relief=tk.FLAT,
                                      cursor='hand2',
-                                     padx=10,
-                                     pady=4,
+                                     padx=12,
+                                     pady=5,
                                      command=self._toggle_service)
         self.service_btn.pack(side=tk.LEFT, padx=5)
 
         # App title on the left
         title_label = tk.Label(status_frame,
-                              text="🎨 Wallpaper Changer Configuration",
+                              text="WALLPAPER CHANGER",
                               bg=self.COLORS['bg_secondary'],
-                              fg=self.COLORS['accent'],
-                              font=('Segoe UI', 11, 'bold'))
+                              fg=self.COLORS['text_primary'],
+                              font=('Segoe UI', 12, 'bold'))
         title_label.pack(side=tk.LEFT, padx=15, pady=8)
 
         # Start status update loop
@@ -782,37 +782,37 @@ class WallpaperConfigGUI:
 
         # Tab 1: Settings
         self.settings_frame = ttk.Frame(self.notebook)
-        self.notebook.add(self.settings_frame, text="⚙️ Settings")
+        self.notebook.add(self.settings_frame, text="Settings")
         self._create_settings_tab()
 
         # Tab 2: Cache/Gallery
         self.cache_frame = ttk.Frame(self.notebook)
-        self.notebook.add(self.cache_frame, text="🖼️ Wallpaper Gallery")
+        self.notebook.add(self.cache_frame, text="Wallpapers")
         self._create_cache_tab()
 
         # Tab 3: Advanced Parameters
         self.advanced_frame = ttk.Frame(self.notebook)
-        self.notebook.add(self.advanced_frame, text="🔧 Advanced")
+        self.notebook.add(self.advanced_frame, text="Advanced")
         self._create_advanced_tab()
 
         # Tab 4: Help & Features
         self.help_frame = ttk.Frame(self.notebook)
-        self.notebook.add(self.help_frame, text="📚 Help & Features")
+        self.notebook.add(self.help_frame, text="Help & Features")
         self._create_help_tab()
 
         # Tab 5: Logs
         self.logs_frame = ttk.Frame(self.notebook)
-        self.notebook.add(self.logs_frame, text="📋 Logs")
+        self.notebook.add(self.logs_frame, text="Logs")
         self._create_logs_tab()
 
         # Bottom buttons
         button_frame = ttk.Frame(self.root)
         button_frame.pack(fill=tk.X, padx=10, pady=5)
 
-        ttk.Button(button_frame, text="💾 Save Configuration", command=self._save_config).pack(side=tk.LEFT, padx=5)
-        ttk.Button(button_frame, text="🔄 Reload Config", command=self._reload_config).pack(side=tk.LEFT, padx=5)
-        ttk.Button(button_frame, text="🚪 Quit", command=self._quit_application).pack(side=tk.RIGHT, padx=5)
-        ttk.Button(button_frame, text="➖ Minimize to Tray", command=self._on_closing).pack(side=tk.RIGHT, padx=5)
+        ttk.Button(button_frame, text="Save Configuration", command=self._save_config).pack(side=tk.LEFT, padx=5)
+        ttk.Button(button_frame, text="Reload Config", command=self._reload_config).pack(side=tk.LEFT, padx=5)
+        ttk.Button(button_frame, text="Quit", command=self._quit_application).pack(side=tk.RIGHT, padx=5)
+        ttk.Button(button_frame, text="Minimize", command=self._on_closing).pack(side=tk.RIGHT, padx=5)
 
         # Handle window close button (X)
         self.root.protocol("WM_DELETE_WINDOW", self._on_closing)
@@ -1049,16 +1049,16 @@ class WallpaperConfigGUI:
         change_wallpaper_frame = tk.Frame(self.cache_frame, bg=self.COLORS['bg_primary'])
         change_wallpaper_frame.pack(fill=tk.X, padx=15, pady=15)
 
-        # Top row: Main change button with modern design
+        # Top row: Main change button with modern minimal design
         change_btn = tk.Button(change_wallpaper_frame,
-                              text="⚡ CHANGE WALLPAPER NOW",
+                              text="CHANGE WALLPAPER NOW",
                               bg=self.COLORS['accent'],
                               fg='white',
-                              font=('Segoe UI', 14, 'bold'),
+                              font=('Segoe UI', 13, 'bold'),
                               relief=tk.FLAT,
                               cursor='hand2',
                               padx=40,
-                              pady=18,
+                              pady=16,
                               borderwidth=0,
                               activebackground=self.COLORS['accent_hover'],
                               activeforeground='white',
@@ -1079,27 +1079,27 @@ class WallpaperConfigGUI:
 
         # Cycle provider button
         cycle_btn = tk.Button(provider_frame,
-                             text="🔄 Cycle to Next Provider",
+                             text="Next Provider",
                              bg=self.COLORS['bg_tertiary'],
                              fg=self.COLORS['text_primary'],
                              font=('Segoe UI', 9),
                              relief=tk.FLAT,
                              cursor='hand2',
                              padx=15,
-                             pady=5,
+                             pady=6,
                              command=self._cycle_provider)
         cycle_btn.pack(side=tk.LEFT, padx=5)
 
         # Reset rotation button
         reset_btn = tk.Button(provider_frame,
-                             text="↺ Reset Rotation",
+                             text="Reset Rotation",
                              bg=self.COLORS['bg_tertiary'],
                              fg=self.COLORS['warning'],
                              font=('Segoe UI', 9),
                              relief=tk.FLAT,
                              cursor='hand2',
                              padx=15,
-                             pady=5,
+                             pady=6,
                              command=self._reset_provider_rotation)
         reset_btn.pack(side=tk.LEFT, padx=5)
 
@@ -1120,14 +1120,14 @@ class WallpaperConfigGUI:
         control_frame1 = ttk.Frame(self.cache_frame)
         control_frame1.pack(fill=tk.X, padx=10, pady=(5, 2))
 
-        ttk.Label(control_frame1, text="🔍 Filter by Resolution:").pack(side=tk.LEFT, padx=5)
+        ttk.Label(control_frame1, text="Filter by Resolution:").pack(side=tk.LEFT, padx=5)
         filter_combo = ttk.Combobox(control_frame1, textvariable=self.filter_resolution,
                                     values=["All", "1920x1080+", "2560x1440+", "3440x1440+", "3840x2160+"],
                                     width=15, state="readonly")
         filter_combo.pack(side=tk.LEFT, padx=5)
         filter_combo.bind("<<ComboboxSelected>>", lambda e: self._apply_filters())
 
-        ttk.Label(control_frame1, text="📊 Sort by:").pack(side=tk.LEFT, padx=(15, 5))
+        ttk.Label(control_frame1, text="Sort by:").pack(side=tk.LEFT, padx=(15, 5))
         sort_combo = ttk.Combobox(control_frame1, textvariable=self.sort_by,
                                   values=["Newest First", "Oldest First", "Highest Resolution", "Lowest Resolution"],
                                   width=18, state="readonly")
@@ -1143,8 +1143,8 @@ class WallpaperConfigGUI:
         self.monitor_combo = ttk.Combobox(control_frame2, textvariable=self.monitor_var, width=30)
         self.monitor_combo.pack(side=tk.LEFT, padx=5)
 
-        ttk.Button(control_frame2, text="🔄 Refresh Gallery", command=self._refresh_gallery).pack(side=tk.LEFT, padx=5)
-        ttk.Button(control_frame2, text="🗑️ Clear Cache", command=self._clear_cache).pack(side=tk.LEFT, padx=5)
+        ttk.Button(control_frame2, text="Refresh Gallery", command=self._refresh_gallery).pack(side=tk.LEFT, padx=5)
+        ttk.Button(control_frame2, text="Clear Cache", command=self._clear_cache).pack(side=tk.LEFT, padx=5)
 
         # Create canvas with scrollbar for gallery
         gallery_container = ttk.Frame(self.cache_frame)

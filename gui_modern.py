@@ -407,52 +407,224 @@ class ModernWallpaperGUI:
         # TODO: Re-sort and reload wallpapers
 
     def _show_home_view(self):
-        """Show home/dashboard view"""
-        title = ctk.CTkLabel(
+        """Show enhanced home/dashboard view with statistics and info"""
+        # Main scrollable container
+        scrollable = ctk.CTkScrollableFrame(
             self.content_container,
-            text="Welcome to Wallpaper Changer",
-            font=ctk.CTkFont(size=32, weight="bold"),
+            fg_color="transparent"
+        )
+        scrollable.pack(fill="both", expand=True, padx=20, pady=20)
+
+        # Welcome header
+        title = ctk.CTkLabel(
+            scrollable,
+            text="Dashboard",
+            font=ctk.CTkFont(size=28, weight="bold"),
             text_color=self.COLORS['text_light']
         )
-        title.pack(pady=(50, 20))
+        title.pack(pady=(10, 5), anchor="w")
 
         subtitle = ctk.CTkLabel(
-            self.content_container,
-            text="Manage and customize your desktop wallpapers",
-            font=ctk.CTkFont(size=16),
+            scrollable,
+            text="Overview of your wallpaper system",
+            font=ctk.CTkFont(size=14),
             text_color=self.COLORS['text_muted']
         )
-        subtitle.pack(pady=(0, 40))
+        subtitle.pack(pady=(0, 20), anchor="w")
 
-        # Quick action buttons
-        btn_frame = ctk.CTkFrame(self.content_container, fg_color="transparent")
-        btn_frame.pack(pady=20)
+        # Statistics cards row
+        stats_frame = ctk.CTkFrame(scrollable, fg_color="transparent")
+        stats_frame.pack(fill="x", pady=10)
 
-        change_btn = ctk.CTkButton(
-            btn_frame,
-            text="CHANGE WALLPAPER NOW",
-            font=ctk.CTkFont(size=16, weight="bold"),
-            fg_color=self.COLORS['accent'],
-            hover_color=self.COLORS['sidebar_hover'],
-            corner_radius=12,
-            height=50,
-            width=300,
-            command=self._change_wallpaper_now
+        # Configure grid for 3 cards
+        for i in range(3):
+            stats_frame.grid_columnconfigure(i, weight=1)
+
+        # Service Status Card
+        self._create_stat_card(stats_frame, 0, "Service Status",
+                              self._get_service_status_text(),
+                              self._get_service_status_color())
+
+        # Cache Size Card
+        cache_count = len(self.cache_manager.list_entries()) if self.cache_manager else 0
+        self._create_stat_card(stats_frame, 1, "Cached Wallpapers",
+                              f"{cache_count} images",
+                              self.COLORS['accent'])
+
+        # Weather Card
+        weather_text = self._get_current_weather_text()
+        self._create_stat_card(stats_frame, 2, "Current Weather",
+                              weather_text,
+                              "#00b4d8")
+
+        # Quick Actions Section
+        actions_label = ctk.CTkLabel(
+            scrollable,
+            text="Quick Actions",
+            font=ctk.CTkFont(size=18, weight="bold"),
+            text_color=self.COLORS['text_light']
         )
-        change_btn.pack(pady=10)
+        actions_label.pack(pady=(30, 15), anchor="w")
 
-        gallery_btn = ctk.CTkButton(
-            btn_frame,
-            text="Browse Gallery",
-            font=ctk.CTkFont(size=14),
-            fg_color=self.COLORS['card_bg'],
+        # Actions grid - 2 columns
+        actions_grid = ctk.CTkFrame(scrollable, fg_color="transparent")
+        actions_grid.pack(fill="x", pady=10)
+        actions_grid.grid_columnconfigure(0, weight=1)
+        actions_grid.grid_columnconfigure(1, weight=1)
+
+        # Action cards
+        self._create_action_card(actions_grid, 0, 0,
+                                "Change Wallpaper",
+                                "Get a new wallpaper now",
+                                self.COLORS['accent'],
+                                self._change_wallpaper_now)
+
+        self._create_action_card(actions_grid, 0, 1,
+                                "Browse Gallery",
+                                "View cached wallpapers",
+                                self.COLORS['card_bg'],
+                                lambda: self._navigate("Wallpapers"))
+
+        self._create_action_card(actions_grid, 1, 0,
+                                "Configure Settings",
+                                "Adjust preferences",
+                                self.COLORS['card_bg'],
+                                lambda: self._navigate("Settings"))
+
+        self._create_action_card(actions_grid, 1, 1,
+                                "View Logs",
+                                "Check system activity",
+                                self.COLORS['card_bg'],
+                                lambda: self._navigate("Logs"))
+
+        # Recent Activity Section
+        activity_label = ctk.CTkLabel(
+            scrollable,
+            text="System Information",
+            font=ctk.CTkFont(size=18, weight="bold"),
+            text_color=self.COLORS['text_light']
+        )
+        activity_label.pack(pady=(30, 15), anchor="w")
+
+        # Info card
+        info_card = ctk.CTkFrame(scrollable, fg_color=self.COLORS['card_bg'], corner_radius=12)
+        info_card.pack(fill="x", pady=10)
+
+        # Read current settings
+        from config import Provider, RotateProviders, SchedulerSettings
+
+        info_items = [
+            ("Active Provider", Provider.upper()),
+            ("Provider Rotation", "Enabled" if RotateProviders else "Disabled"),
+            ("Auto-Change", "Enabled" if SchedulerSettings.get("enabled") else "Disabled"),
+            ("Change Interval", f"{SchedulerSettings.get('interval_minutes', 45)} minutes"),
+        ]
+
+        for label, value in info_items:
+            item_frame = ctk.CTkFrame(info_card, fg_color="transparent")
+            item_frame.pack(fill="x", padx=20, pady=8)
+
+            ctk.CTkLabel(
+                item_frame,
+                text=label + ":",
+                font=ctk.CTkFont(size=13),
+                text_color=self.COLORS['text_muted']
+            ).pack(side="left")
+
+            ctk.CTkLabel(
+                item_frame,
+                text=value,
+                font=ctk.CTkFont(size=13, weight="bold"),
+                text_color=self.COLORS['text_light']
+            ).pack(side="right")
+
+        # Spacer at bottom
+        ctk.CTkLabel(scrollable, text="").pack(pady=20)
+
+    def _create_stat_card(self, parent, col, title, value, color):
+        """Create a statistics card"""
+        card = ctk.CTkFrame(parent, fg_color=self.COLORS['card_bg'], corner_radius=12)
+        card.grid(row=0, column=col, padx=10, pady=10, sticky="nsew")
+
+        # Title
+        ctk.CTkLabel(
+            card,
+            text=title,
+            font=ctk.CTkFont(size=12),
+            text_color=self.COLORS['text_muted']
+        ).pack(pady=(15, 5))
+
+        # Value
+        ctk.CTkLabel(
+            card,
+            text=value,
+            font=ctk.CTkFont(size=16, weight="bold"),
+            text_color=color
+        ).pack(pady=(5, 15))
+
+    def _create_action_card(self, parent, row, col, title, description, color, command):
+        """Create an action card button"""
+        card = ctk.CTkButton(
+            parent,
+            text="",
+            fg_color=color,
             hover_color=self.COLORS['card_hover'],
             corner_radius=12,
-            height=45,
-            width=300,
-            command=lambda: self._navigate("Wallpapers")
+            height=100,
+            command=command
         )
-        gallery_btn.pack(pady=10)
+        card.grid(row=row, column=col, padx=10, pady=10, sticky="nsew")
+
+        # Content frame
+        content = ctk.CTkFrame(card, fg_color="transparent")
+        content.place(relx=0.5, rely=0.5, anchor="center")
+
+        ctk.CTkLabel(
+            content,
+            text=title,
+            font=ctk.CTkFont(size=15, weight="bold"),
+            text_color=self.COLORS['text_light']
+        ).pack()
+
+        ctk.CTkLabel(
+            content,
+            text=description,
+            font=ctk.CTkFont(size=11),
+            text_color=self.COLORS['text_muted']
+        ).pack(pady=(5, 0))
+
+    def _get_service_status_text(self):
+        """Get service status text"""
+        if self.pid_file.exists():
+            try:
+                import psutil
+                with open(self.pid_file, 'r') as f:
+                    pid = int(f.read().strip())
+                if psutil.pid_exists(pid):
+                    return "Running"
+            except:
+                pass
+        return "Stopped"
+
+    def _get_service_status_color(self):
+        """Get service status color"""
+        status = self._get_service_status_text()
+        return "#00ff00" if status == "Running" else "#ff0000"
+
+    def _get_current_weather_text(self):
+        """Get current weather text"""
+        try:
+            from weather_rotation import WeatherRotationController
+            from config import WeatherRotationSettings
+
+            controller = WeatherRotationController(WeatherRotationSettings, None)
+            decision = controller.evaluate("gui")
+
+            if decision and decision.temperature:
+                return f"{decision.temperature:.1f}°C - {decision.condition}"
+            return "N/A"
+        except:
+            return "N/A"
 
     def _show_settings_view(self):
         """Show fully editable settings"""

@@ -1199,10 +1199,10 @@ class ModernWallpaperGUI:
                     if weather_decision:
                         # Create WeatherInfo from WeatherDecision
                         weather_info = WeatherInfo(
-                            city="",  # Not needed for overlay, but required by WeatherInfo
-                            country="",  # Not needed for overlay, but required by WeatherInfo
+                            city=WeatherRotationSettings.get("location", {}).get("city", ""),
+                            country=WeatherRotationSettings.get("location", {}).get("country", ""),
                             condition=weather_decision.condition,
-                            temperature=weather_decision.temperature,
+                            temperature=weather_decision.temperature or 0.0,
                             feels_like=weather_decision.details.get('feels_like') if weather_decision.details else None,
                             humidity=weather_decision.details.get('humidity') if weather_decision.details else None,
                             pressure=weather_decision.details.get('pressure') if weather_decision.details else None,

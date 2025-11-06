@@ -1194,9 +1194,23 @@ class ModernWallpaperGUI:
                 try:
                     # Get current weather
                     weather_controller = WeatherRotationController(WeatherRotationSettings, None)
-                    weather_decision = weather_controller.get_weather_decision()
+                    weather_decision = weather_controller.evaluate("gui")
 
-                    if weather_decision and weather_decision.weather_info:
+                    if weather_decision:
+                        # Create WeatherInfo from WeatherDecision
+                        weather_info = WeatherInfo(
+                            city="",  # Not needed for overlay, but required by WeatherInfo
+                            country="",  # Not needed for overlay, but required by WeatherInfo
+                            condition=weather_decision.condition,
+                            temperature=weather_decision.temperature,
+                            feels_like=weather_decision.details.get('feels_like') if weather_decision.details else None,
+                            humidity=weather_decision.details.get('humidity') if weather_decision.details else None,
+                            pressure=weather_decision.details.get('pressure') if weather_decision.details else None,
+                            wind_speed=weather_decision.details.get('wind_speed') if weather_decision.details else None,
+                            clouds=weather_decision.details.get('clouds') if weather_decision.details else None,
+                            description=weather_decision.details.get('description') if weather_decision.details else None
+                        )
+
                         # Create temporary file for overlay
                         temp_dir = tempfile.gettempdir()
                         timestamp = int(time.time())
@@ -1210,13 +1224,12 @@ class ModernWallpaperGUI:
                             target_size = (mon.get('width'), mon.get('height'))
 
                         # Apply overlay
-                        if weather_overlay.apply_overlay(wallpaper_path, temp_overlay_path,
-                                                        weather_decision.weather_info, target_size):
+                        if weather_overlay.apply_overlay(wallpaper_path, temp_overlay_path, weather_info, target_size):
                             wallpaper_path = temp_overlay_path
-                            print(f"Weather overlay applied: {weather_decision.weather_info.condition}")
+
                 except Exception as e:
-                    print(f"Failed to apply weather overlay: {e}")
                     # Continue with original wallpaper if overlay fails
+                    pass
 
             # Convert to BMP if needed
             if not wallpaper_path.lower().endswith('.bmp'):

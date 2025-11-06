@@ -506,60 +506,53 @@ class ModernWallpaperGUI:
         self.keybind_var = ctk.StringVar(value=KeyBind)
 
         # Provider Settings
-        self._create_setting_section(scrollable, "Provider Settings", [
-            ("Default Provider:", self._create_dropdown(scrollable, self.provider_var,
-                ["wallhaven", "pexels", "reddit"])),
-            ("Search Query:", self._create_entry(scrollable, self.query_var)),
-            ("Enable Provider Rotation", self._create_checkbox(scrollable, self.rotate_providers_var)),
-        ])
+        provider_section = self._create_section(scrollable, "Provider Settings")
+        self._add_setting_row(provider_section, "Default Provider:", "dropdown", self.provider_var,
+                            ["wallhaven", "pexels", "reddit"])
+        self._add_setting_row(provider_section, "Search Query:", "entry", self.query_var)
+        self._add_setting_row(provider_section, "Enable Provider Rotation", "checkbox", self.rotate_providers_var)
 
         # Wallhaven Settings
-        self._create_setting_section(scrollable, "Wallhaven Settings", [
-            ("Purity Level:", self._create_dropdown(scrollable, self.purity_var,
-                ["100", "110", "111", "010", "001"])),
-            ("Min Resolution:", self._create_dropdown(scrollable, self.resolution_var,
-                ["1920x1080", "2560x1440", "3440x1440", "3840x2160"])),
-            ("Sorting:", self._create_dropdown(scrollable, self.sorting_var,
-                ["random", "toplist", "favorites", "views"])),
-            ("Top Range:", self._create_dropdown(scrollable, self.toprange_var,
-                ["1d", "3d", "1w", "1M", "3M", "6M", "1y"])),
-        ])
+        wallhaven_section = self._create_section(scrollable, "Wallhaven Settings")
+        self._add_setting_row(wallhaven_section, "Purity Level:", "dropdown", self.purity_var,
+                            ["100", "110", "111", "010", "001"])
+        self._add_setting_row(wallhaven_section, "Min Resolution:", "dropdown", self.resolution_var,
+                            ["1920x1080", "2560x1440", "3440x1440", "3840x2160"])
+        self._add_setting_row(wallhaven_section, "Sorting:", "dropdown", self.sorting_var,
+                            ["random", "toplist", "favorites", "views"])
+        self._add_setting_row(wallhaven_section, "Top Range:", "dropdown", self.toprange_var,
+                            ["1d", "3d", "1w", "1M", "3M", "6M", "1y"])
 
         # Pexels Settings
-        self._create_setting_section(scrollable, "Pexels Settings", [
-            ("Mode:", self._create_dropdown(scrollable, self.pexels_mode_var,
-                ["search", "curated"])),
-        ])
+        pexels_section = self._create_section(scrollable, "Pexels Settings")
+        self._add_setting_row(pexels_section, "Mode:", "dropdown", self.pexels_mode_var,
+                            ["search", "curated"])
 
         # Reddit Settings
-        self._create_setting_section(scrollable, "Reddit Settings", [
-            ("Subreddits (comma separated):", self._create_entry(scrollable, self.reddit_subreddits_var)),
-            ("Sort:", self._create_dropdown(scrollable, self.reddit_sort_var,
-                ["hot", "new", "rising", "top", "controversial"])),
-            ("Time Filter:", self._create_dropdown(scrollable, self.reddit_time_var,
-                ["hour", "day", "week", "month", "year", "all"])),
-            ("Posts per fetch:", self._create_spinbox(scrollable, self.reddit_limit_var, 10, 100)),
-            ("Minimum upvotes:", self._create_spinbox(scrollable, self.reddit_score_var, 0, 100000)),
-            ("Include NSFW posts", self._create_checkbox(scrollable, self.reddit_nsfw_var)),
-        ])
+        reddit_section = self._create_section(scrollable, "Reddit Settings")
+        self._add_setting_row(reddit_section, "Subreddits (comma separated):", "entry", self.reddit_subreddits_var)
+        self._add_setting_row(reddit_section, "Sort:", "dropdown", self.reddit_sort_var,
+                            ["hot", "new", "rising", "top", "controversial"])
+        self._add_setting_row(reddit_section, "Time Filter:", "dropdown", self.reddit_time_var,
+                            ["hour", "day", "week", "month", "year", "all"])
+        self._add_setting_row(reddit_section, "Posts per fetch:", "spinbox", self.reddit_limit_var, [10, 100])
+        self._add_setting_row(reddit_section, "Minimum upvotes:", "spinbox", self.reddit_score_var, [0, 100000])
+        self._add_setting_row(reddit_section, "Include NSFW posts", "checkbox", self.reddit_nsfw_var)
 
         # Scheduler Settings
-        self._create_setting_section(scrollable, "Scheduler Settings", [
-            ("Enable Scheduler", self._create_checkbox(scrollable, self.scheduler_enabled_var)),
-            ("Interval (minutes):", self._create_spinbox(scrollable, self.interval_var, 1, 1440)),
-            ("Jitter (minutes):", self._create_spinbox(scrollable, self.jitter_var, 0, 60)),
-        ])
+        scheduler_section = self._create_section(scrollable, "Scheduler Settings")
+        self._add_setting_row(scheduler_section, "Enable Scheduler", "checkbox", self.scheduler_enabled_var)
+        self._add_setting_row(scheduler_section, "Interval (minutes):", "spinbox", self.interval_var, [1, 1440])
+        self._add_setting_row(scheduler_section, "Jitter (minutes):", "spinbox", self.jitter_var, [0, 60])
 
         # Cache Settings
-        self._create_setting_section(scrollable, "Cache Settings", [
-            ("Max Cache Items:", self._create_spinbox(scrollable, self.cache_max_var, 10, 500)),
-            ("Enable Offline Rotation", self._create_checkbox(scrollable, self.cache_offline_var)),
-        ])
+        cache_section = self._create_section(scrollable, "Cache Settings")
+        self._add_setting_row(cache_section, "Max Cache Items:", "spinbox", self.cache_max_var, [10, 500])
+        self._add_setting_row(cache_section, "Enable Offline Rotation", "checkbox", self.cache_offline_var)
 
         # Hotkey Settings
-        self._create_setting_section(scrollable, "Hotkey Settings", [
-            ("Hotkey:", self._create_entry(scrollable, self.keybind_var)),
-        ])
+        hotkey_section = self._create_section(scrollable, "Hotkey Settings")
+        self._add_setting_row(hotkey_section, "Hotkey:", "entry", self.keybind_var)
 
         # Save button
         save_btn = ctk.CTkButton(
@@ -574,10 +567,10 @@ class ModernWallpaperGUI:
         )
         save_btn.pack(fill="x", pady=(20, 10))
 
-    def _create_setting_section(self, parent, title, items):
-        """Create a settings section with title and items"""
+    def _create_section(self, parent, title):
+        """Create a settings section frame"""
         section_frame = ctk.CTkFrame(parent, fg_color=self.COLORS['card_bg'], corner_radius=12)
-        section_frame.pack(fill="x", pady=10)
+        section_frame.pack(fill="x", pady=10, padx=5)
 
         section_label = ctk.CTkLabel(
             section_frame,
@@ -587,89 +580,118 @@ class ModernWallpaperGUI:
         )
         section_label.pack(pady=15, padx=20, anchor="w")
 
-        for item in items:
-            if len(item) == 2:
-                label_text, widget = item
-                row_frame = ctk.CTkFrame(section_frame, fg_color="transparent")
-                row_frame.pack(fill="x", padx=20, pady=8)
+        return section_frame
 
-                if not isinstance(widget, ctk.CTkCheckBox):
-                    label = ctk.CTkLabel(
-                        row_frame,
-                        text=label_text,
-                        text_color=self.COLORS['text_light'],
-                        font=ctk.CTkFont(size=13)
-                    )
-                    label.pack(side="left", anchor="w")
-                    widget.pack(side="right", anchor="e")
-                else:
-                    widget.pack(side="left", anchor="w")
+    def _add_setting_row(self, section_frame, label_text, widget_type, variable, options=None):
+        """Add a setting row with label and widget"""
+        row_frame = ctk.CTkFrame(section_frame, fg_color="transparent")
+        row_frame.pack(fill="x", padx=20, pady=8)
 
-        ctk.CTkLabel(section_frame, text="").pack(pady=5)
+        if widget_type == "checkbox":
+            # Checkbox with label inside
+            checkbox = ctk.CTkCheckBox(
+                row_frame,
+                text=label_text,
+                variable=variable,
+                fg_color=self.COLORS['accent'],
+                hover_color=self.COLORS['sidebar_hover'],
+                checkmark_color=self.COLORS['text_light'],
+                text_color=self.COLORS['text_light'],
+                font=ctk.CTkFont(size=13)
+            )
+            checkbox.pack(side="left", anchor="w")
+        else:
+            # Label on left
+            label = ctk.CTkLabel(
+                row_frame,
+                text=label_text,
+                text_color=self.COLORS['text_light'],
+                font=ctk.CTkFont(size=13),
+                width=250
+            )
+            label.pack(side="left", anchor="w")
 
-    def _create_entry(self, parent, variable):
-        """Create an entry widget"""
-        return ctk.CTkEntry(parent, textvariable=variable, width=250,
-                          fg_color=self.COLORS['card_hover'],
-                          border_color=self.COLORS['accent'],
-                          text_color=self.COLORS['text_light'])
+            # Widget on right
+            if widget_type == "entry":
+                widget = ctk.CTkEntry(
+                    row_frame,
+                    textvariable=variable,
+                    width=300,
+                    fg_color=self.COLORS['card_hover'],
+                    border_color=self.COLORS['accent'],
+                    text_color=self.COLORS['text_light']
+                )
+                widget.pack(side="right", anchor="e")
 
-    def _create_dropdown(self, parent, variable, values):
-        """Create a dropdown widget"""
-        return ctk.CTkComboBox(parent, variable=variable, values=values, width=250,
-                             fg_color=self.COLORS['card_hover'],
-                             border_color=self.COLORS['accent'],
-                             button_color=self.COLORS['accent'],
-                             text_color=self.COLORS['text_light'],
-                             dropdown_fg_color=self.COLORS['card_bg'])
+            elif widget_type == "dropdown":
+                widget = ctk.CTkComboBox(
+                    row_frame,
+                    variable=variable,
+                    values=options,
+                    width=300,
+                    fg_color=self.COLORS['card_hover'],
+                    border_color=self.COLORS['accent'],
+                    button_color=self.COLORS['accent'],
+                    text_color=self.COLORS['text_light'],
+                    dropdown_fg_color=self.COLORS['card_bg']
+                )
+                widget.pack(side="right", anchor="e")
 
-    def _create_spinbox(self, parent, variable, from_, to):
-        """Create a spinbox widget using entry + buttons"""
-        frame = ctk.CTkFrame(parent, fg_color="transparent")
+            elif widget_type == "spinbox":
+                from_, to = options
+                spinbox_frame = ctk.CTkFrame(row_frame, fg_color="transparent")
+                spinbox_frame.pack(side="right", anchor="e")
 
-        entry = ctk.CTkEntry(frame, textvariable=variable, width=150,
-                           fg_color=self.COLORS['card_hover'],
-                           border_color=self.COLORS['accent'],
-                           text_color=self.COLORS['text_light'])
-        entry.pack(side="left", padx=5)
+                entry = ctk.CTkEntry(
+                    spinbox_frame,
+                    textvariable=variable,
+                    width=200,
+                    fg_color=self.COLORS['card_hover'],
+                    border_color=self.COLORS['accent'],
+                    text_color=self.COLORS['text_light']
+                )
+                entry.pack(side="left", padx=(0, 5))
 
-        btn_frame = ctk.CTkFrame(frame, fg_color="transparent")
-        btn_frame.pack(side="left")
+                btn_frame = ctk.CTkFrame(spinbox_frame, fg_color="transparent")
+                btn_frame.pack(side="left")
 
-        def increment():
-            try:
-                val = variable.get()
-                if val < to:
-                    variable.set(val + 1)
-            except:
-                variable.set(from_)
+                def increment():
+                    try:
+                        val = variable.get()
+                        if val < to:
+                            variable.set(val + 1)
+                    except:
+                        variable.set(from_)
 
-        def decrement():
-            try:
-                val = variable.get()
-                if val > from_:
-                    variable.set(val - 1)
-            except:
-                variable.set(from_)
+                def decrement():
+                    try:
+                        val = variable.get()
+                        if val > from_:
+                            variable.set(val - 1)
+                    except:
+                        variable.set(from_)
 
-        up_btn = ctk.CTkButton(btn_frame, text="▲", width=30, height=20,
-                             fg_color=self.COLORS['accent'],
-                             command=increment)
-        up_btn.pack(side="top")
+                up_btn = ctk.CTkButton(
+                    btn_frame,
+                    text="▲",
+                    width=40,
+                    height=25,
+                    fg_color=self.COLORS['accent'],
+                    hover_color=self.COLORS['sidebar_hover'],
+                    command=increment
+                )
+                up_btn.pack(side="left", padx=2)
 
-        down_btn = ctk.CTkButton(btn_frame, text="▼", width=30, height=20,
-                               fg_color=self.COLORS['accent'],
-                               command=decrement)
-        down_btn.pack(side="top")
-
-        return frame
-
-    def _create_checkbox(self, parent, variable):
-        """Create a checkbox widget"""
-        return ctk.CTkCheckBox(parent, text="", variable=variable,
-                             fg_color=self.COLORS['accent'],
-                             hover_color=self.COLORS['sidebar_hover'],
-                             checkmark_color=self.COLORS['text_light'])
+                down_btn = ctk.CTkButton(
+                    btn_frame,
+                    text="▼",
+                    width=40,
+                    height=25,
+                    fg_color=self.COLORS['accent'],
+                    hover_color=self.COLORS['sidebar_hover'],
+                    command=decrement
+                )
+                down_btn.pack(side="left", padx=2)
 
     def _save_settings(self):
         """Save all settings to config.py"""

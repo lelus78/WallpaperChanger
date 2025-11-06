@@ -1,0 +1,342 @@
+"""
+Modern GUI for Wallpaper Changer using CustomTkinter
+Inspired by contemporary wallpaper applications with sidebar navigation
+"""
+import os
+import customtkinter as ctk
+from pathlib import Path
+from PIL import Image, ImageTk
+from typing import Dict, Any, List, Optional
+import tkinter as tk
+
+from cache_manager import CacheManager
+from config import CacheSettings
+
+
+# Set appearance mode and color theme
+ctk.set_appearance_mode("dark")
+ctk.set_default_color_theme("blue")
+
+
+class ModernWallpaperGUI:
+    """Modern CustomTkinter-based GUI for Wallpaper Changer"""
+
+    # Modern color palette matching the reference image
+    COLORS = {
+        'sidebar_bg': '#C41E3A',  # Red sidebar like reference
+        'sidebar_hover': '#A01828',
+        'main_bg': '#2B1B2D',  # Dark purple/burgundy background
+        'card_bg': '#3D2B3F',
+        'card_hover': '#4D3B4F',
+        'accent': '#E94560',
+        'text_light': '#FFFFFF',
+        'text_muted': '#B0B0B0',
+    }
+
+    def __init__(self):
+        self.root = ctk.CTk()
+        self.root.title("Wallpaper Changer")
+        self.root.geometry("1400x900")
+
+        # Configure grid layout
+        self.root.grid_columnconfigure(1, weight=1)
+        self.root.grid_rowconfigure(0, weight=1)
+
+        # Initialize cache manager
+        cache_dir = CacheSettings.get("directory") or os.path.join(
+            os.path.expanduser("~"), "WallpaperChangerCache"
+        )
+        self.cache_manager = CacheManager(
+            cache_dir,
+            max_items=int(CacheSettings.get("max_items", 60)),
+            enable_rotation=bool(CacheSettings.get("enable_offline_rotation", True)),
+        )
+
+        # Thumbnail cache
+        self.thumbnail_cache = {}
+
+        # Create UI
+        self._create_sidebar()
+        self._create_main_content()
+
+        # Load wallpapers
+        self._load_wallpapers()
+
+    def _create_sidebar(self):
+        """Create modern sidebar with navigation"""
+        self.sidebar = ctk.CTkFrame(
+            self.root,
+            width=200,
+            corner_radius=0,
+            fg_color=self.COLORS['sidebar_bg']
+        )
+        self.sidebar.grid(row=0, column=0, sticky="nsew")
+        self.sidebar.grid_rowconfigure(6, weight=1)
+
+        # Logo/Title
+        title_label = ctk.CTkLabel(
+            self.sidebar,
+            text="WALLPAPER\nCHANGER",
+            font=ctk.CTkFont(size=20, weight="bold"),
+            text_color=self.COLORS['text_light']
+        )
+        title_label.grid(row=0, column=0, padx=20, pady=(30, 40))
+
+        # Navigation buttons with icons (text-based for now)
+        nav_items = [
+            ("Home", "🏠"),
+            ("Wallpapers", "🖼️"),
+            ("Downloads", "⬇️"),
+            ("Settings", "⚙️"),
+            ("Feedback", "💬"),
+        ]
+
+        self.nav_buttons = []
+        for idx, (text, icon) in enumerate(nav_items, start=1):
+            btn = ctk.CTkButton(
+                self.sidebar,
+                text=f"  {text}",
+                font=ctk.CTkFont(size=14),
+                fg_color="transparent",
+                text_color=self.COLORS['text_light'],
+                hover_color=self.COLORS['sidebar_hover'],
+                anchor="w",
+                height=45,
+                corner_radius=8,
+                command=lambda t=text: self._navigate(t)
+            )
+            btn.grid(row=idx, column=0, padx=15, pady=5, sticky="ew")
+            self.nav_buttons.append(btn)
+
+        # Set "Wallpapers" as active by default
+        self.active_view = "Wallpapers"
+        self._update_nav_buttons()
+
+    def _create_main_content(self):
+        """Create main content area"""
+        # Main container
+        self.main_frame = ctk.CTkFrame(
+            self.root,
+            corner_radius=0,
+            fg_color=self.COLORS['main_bg']
+        )
+        self.main_frame.grid(row=0, column=1, sticky="nsew", padx=0, pady=0)
+        self.main_frame.grid_rowconfigure(1, weight=1)
+        self.main_frame.grid_columnconfigure(0, weight=1)
+
+        # Header with controls
+        self._create_header()
+
+        # Scrollable frame for wallpaper grid
+        self.scrollable_frame = ctk.CTkScrollableFrame(
+            self.main_frame,
+            corner_radius=0,
+            fg_color="transparent"
+        )
+        self.scrollable_frame.grid(row=1, column=0, sticky="nsew", padx=20, pady=20)
+
+        # Configure grid for wallpaper cards (4 columns)
+        for i in range(4):
+            self.scrollable_frame.grid_columnconfigure(i, weight=1, uniform="col")
+
+    def _create_header(self):
+        """Create header with search and filters"""
+        header = ctk.CTkFrame(
+            self.main_frame,
+            height=80,
+            corner_radius=0,
+            fg_color="transparent"
+        )
+        header.grid(row=0, column=0, sticky="ew", padx=20, pady=(20, 0))
+        header.grid_columnconfigure(1, weight=1)
+
+        # Title
+        title = ctk.CTkLabel(
+            header,
+            text="Wallpaper Gallery",
+            font=ctk.CTkFont(size=24, weight="bold"),
+            text_color=self.COLORS['text_light']
+        )
+        title.grid(row=0, column=0, sticky="w", padx=10)
+
+        # Filter dropdown
+        filter_frame = ctk.CTkFrame(header, fg_color="transparent")
+        filter_frame.grid(row=0, column=2, sticky="e", padx=10)
+
+        ctk.CTkLabel(
+            filter_frame,
+            text="Sort:",
+            text_color=self.COLORS['text_muted'],
+            font=ctk.CTkFont(size=13)
+        ).pack(side="left", padx=(0, 10))
+
+        self.sort_var = ctk.StringVar(value="Newest First")
+        sort_menu = ctk.CTkOptionMenu(
+            filter_frame,
+            variable=self.sort_var,
+            values=["Newest First", "Oldest First", "Highest Resolution"],
+            width=150,
+            fg_color=self.COLORS['card_bg'],
+            button_color=self.COLORS['accent'],
+            button_hover_color=self.COLORS['sidebar_hover'],
+            command=self._on_sort_change
+        )
+        sort_menu.pack(side="left")
+
+    def _load_wallpapers(self):
+        """Load wallpapers from cache"""
+        if not self.cache_manager or not self.cache_manager.has_items():
+            # Show empty state
+            empty_label = ctk.CTkLabel(
+                self.scrollable_frame,
+                text="No wallpapers in cache.\nDownload some wallpapers first!",
+                font=ctk.CTkFont(size=16),
+                text_color=self.COLORS['text_muted']
+            )
+            empty_label.grid(row=0, column=0, columnspan=4, pady=100)
+            return
+
+        # Get cached items
+        items = self.cache_manager.list_entries()
+
+        # Create cards in grid
+        for idx, item in enumerate(items[:20]):  # Limit to 20 for now
+            row = idx // 4
+            col = idx % 4
+            self._create_wallpaper_card(item, row, col)
+
+    def _create_wallpaper_card(self, item: Dict[str, Any], row: int, col: int):
+        """Create a modern wallpaper card with rounded corners"""
+        # Card container
+        card = ctk.CTkFrame(
+            self.scrollable_frame,
+            fg_color=self.COLORS['card_bg'],
+            corner_radius=15,  # Rounded corners!
+            border_width=0
+        )
+        card.grid(row=row, column=col, padx=10, pady=10, sticky="nsew")
+
+        try:
+            # Load image
+            image_path = item.get("path", "")
+            if not os.path.exists(image_path):
+                raise FileNotFoundError()
+
+            # Check cache
+            if image_path in self.thumbnail_cache:
+                photo, original_size = self.thumbnail_cache[image_path]
+            else:
+                img = Image.open(image_path)
+                original_size = img.size
+                # Create larger thumbnail
+                img.thumbnail((320, 200), Image.Resampling.LANCZOS)
+                photo = ctk.CTkImage(light_image=img, dark_image=img, size=(320, 200))
+                self.thumbnail_cache[image_path] = (photo, original_size)
+
+            # Image label with rounded appearance
+            img_label = ctk.CTkLabel(
+                card,
+                image=photo,
+                text=""
+            )
+            img_label.pack(padx=10, pady=10)
+
+            # Info section
+            info_frame = ctk.CTkFrame(card, fg_color="transparent")
+            info_frame.pack(fill="x", padx=15, pady=(0, 10))
+
+            # Resolution badge
+            resolution_text = f"{original_size[0]}x{original_size[1]}"
+            resolution_badge = ctk.CTkLabel(
+                info_frame,
+                text=resolution_text,
+                font=ctk.CTkFont(size=11, weight="bold"),
+                text_color=self.COLORS['text_light'],
+                fg_color=self.COLORS['accent'],
+                corner_radius=6,
+                padx=10,
+                pady=4
+            )
+            resolution_badge.pack(side="left", padx=(0, 5))
+
+            # Provider badge
+            provider = item.get("provider", "Unknown").upper()
+            provider_colors = {
+                'WALLHAVEN': '#00e676',
+                'PEXELS': '#ffd93d',
+                'REDDIT': '#ff6b81',
+                'UNSPLASH': '#89b4fa',
+            }
+            provider_color = provider_colors.get(provider, '#808080')
+
+            provider_badge = ctk.CTkLabel(
+                info_frame,
+                text=provider,
+                font=ctk.CTkFont(size=11, weight="bold"),
+                text_color='#000000',
+                fg_color=provider_color,
+                corner_radius=6,
+                padx=10,
+                pady=4
+            )
+            provider_badge.pack(side="left")
+
+            # Apply button
+            apply_btn = ctk.CTkButton(
+                card,
+                text="SET AS WALLPAPER",
+                font=ctk.CTkFont(size=13, weight="bold"),
+                fg_color=self.COLORS['accent'],
+                hover_color=self.COLORS['sidebar_hover'],
+                corner_radius=10,
+                height=40,
+                command=lambda i=item: self._apply_wallpaper(i)
+            )
+            apply_btn.pack(fill="x", padx=15, pady=(0, 15))
+
+        except Exception as e:
+            error_label = ctk.CTkLabel(
+                card,
+                text=f"Error loading\nimage",
+                font=ctk.CTkFont(size=12),
+                text_color=self.COLORS['text_muted']
+            )
+            error_label.pack(expand=True, pady=50)
+
+    def _apply_wallpaper(self, item: Dict[str, Any]):
+        """Apply selected wallpaper"""
+        print(f"Applying wallpaper: {item.get('path')}")
+        # TODO: Integrate with main.py wallpaper application logic
+
+    def _navigate(self, view: str):
+        """Handle navigation"""
+        self.active_view = view
+        self._update_nav_buttons()
+        print(f"Navigated to: {view}")
+        # TODO: Switch content based on view
+
+    def _update_nav_buttons(self):
+        """Update navigation button styles"""
+        for btn in self.nav_buttons:
+            if btn.cget("text").strip() == self.active_view:
+                btn.configure(fg_color=self.COLORS['sidebar_hover'])
+            else:
+                btn.configure(fg_color="transparent")
+
+    def _on_sort_change(self, choice: str):
+        """Handle sort change"""
+        print(f"Sort changed to: {choice}")
+        # TODO: Re-sort and reload wallpapers
+
+    def run(self):
+        """Start the GUI"""
+        self.root.mainloop()
+
+
+def main():
+    app = ModernWallpaperGUI()
+    app.run()
+
+
+if __name__ == "__main__":
+    main()

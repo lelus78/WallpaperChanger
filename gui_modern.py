@@ -3,6 +3,9 @@ Modern GUI for Wallpaper Changer using CustomTkinter
 Inspired by contemporary wallpaper applications with sidebar navigation
 """
 import os
+import sys
+import subprocess
+import signal
 import customtkinter as ctk
 from pathlib import Path
 from PIL import Image, ImageTk
@@ -56,9 +59,20 @@ class ModernWallpaperGUI:
         # Thumbnail cache
         self.thumbnail_cache = {}
 
+        # Main app process
+        self.main_process = None
+        self.pid_file = Path(__file__).parent / "wallpaperchanger.pid"
+        self.signal_file = Path(__file__).parent / "wallpaperchanger.signal"
+
+        # Start main wallpaper service
+        self._ensure_service_running()
+
         # Create UI
         self._create_sidebar()
         self._create_main_content()
+
+        # Setup cleanup on close
+        self.root.protocol("WM_DELETE_WINDOW", self._on_closing)
 
     def _create_sidebar(self):
         """Create modern sidebar with navigation"""
@@ -231,9 +245,9 @@ class ModernWallpaperGUI:
         )
         scrollable_frame.grid(row=1, column=0, sticky="nsew", padx=20, pady=20)
 
-        # Configure grid for wallpaper cards (4 columns)
-        for i in range(4):
-            scrollable_frame.grid_columnconfigure(i, weight=1, uniform="col")
+        # Configure grid for wallpaper cards (3 columns for better visibility)
+        for i in range(3):
+            scrollable_frame.grid_columnconfigure(i, weight=1, uniform="col", minsize=360)
 
         # Load wallpapers from cache
         if not self.cache_manager or not self.cache_manager.has_items():
@@ -250,10 +264,10 @@ class ModernWallpaperGUI:
         # Get cached items
         items = self.cache_manager.list_entries()
 
-        # Create cards in grid
-        for idx, item in enumerate(items[:20]):  # Limit to 20 for now
-            row = idx // 4
-            col = idx % 4
+        # Create cards in grid (3 columns)
+        for idx, item in enumerate(items[:30]):  # Show up to 30 wallpapers
+            row = idx // 3
+            col = idx % 3
             self._create_wallpaper_card(item, row, col, scrollable_frame)
 
     def _create_wallpaper_card(self, item: Dict[str, Any], row: int, col: int, parent):
@@ -356,11 +370,6 @@ class ModernWallpaperGUI:
             )
             error_label.pack(expand=True, pady=50)
 
-    def _apply_wallpaper(self, item: Dict[str, Any]):
-        """Apply selected wallpaper"""
-        print(f"Applying wallpaper: {item.get('path')}")
-        # TODO: Integrate with main.py wallpaper application logic
-
     def _navigate(self, view: str):
         """Handle navigation"""
         self.active_view = view
@@ -411,9 +420,12 @@ class ModernWallpaperGUI:
         )
         subtitle.pack(pady=(0, 40))
 
-        # Quick action button
+        # Quick action buttons
+        btn_frame = ctk.CTkFrame(self.content_container, fg_color="transparent")
+        btn_frame.pack(pady=20)
+
         change_btn = ctk.CTkButton(
-            self.content_container,
+            btn_frame,
             text="CHANGE WALLPAPER NOW",
             font=ctk.CTkFont(size=16, weight="bold"),
             fg_color=self.COLORS['accent'],
@@ -421,9 +433,22 @@ class ModernWallpaperGUI:
             corner_radius=12,
             height=50,
             width=300,
+            command=self._change_wallpaper_now
+        )
+        change_btn.pack(pady=10)
+
+        gallery_btn = ctk.CTkButton(
+            btn_frame,
+            text="Browse Gallery",
+            font=ctk.CTkFont(size=14),
+            fg_color=self.COLORS['card_bg'],
+            hover_color=self.COLORS['card_hover'],
+            corner_radius=12,
+            height=45,
+            width=300,
             command=lambda: self._navigate("Wallpapers")
         )
-        change_btn.pack(pady=20)
+        gallery_btn.pack(pady=10)
 
     def _show_settings_view(self):
         """Show settings view with real config options"""
@@ -608,6 +633,53 @@ class ModernWallpaperGUI:
         """Clear the log display"""
         self.log_textbox.delete("1.0", "end")
         self.log_textbox.insert("1.0", "Log display cleared. Click 'Refresh Logs' to reload.")
+
+    def _ensure_service_running(self):
+        """Ensure main wallpaper service is running"""
+        # Check if already running
+        if self.pid_file.exists():
+            try:
+                with open(self.pid_file, 'r') as f:
+                    pid = int(f.read().strip())
+                # Check if process is still alive
+                import psutil
+                if psutil.pid_exists(pid):
+                    print(f"Service already running (PID: {pid})")
+                    return
+            except:
+                pass
+
+        # Start the service
+        try:
+            main_script = Path(__file__).parent / "main.py"
+            self.main_process = subprocess.Popen(
+                [sys.executable, str(main_script)],
+                creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0
+            )
+            print(f"Started wallpaper service (PID: {self.main_process.pid})")
+        except Exception as e:
+            print(f"Error starting service: {e}")
+
+    def _change_wallpaper_now(self):
+        """Trigger wallpaper change via signal file"""
+        try:
+            # Create signal file to trigger change
+            with open(self.signal_file, 'w') as f:
+                f.write('change')
+            print("Wallpaper change requested")
+        except Exception as e:
+            print(f"Error requesting wallpaper change: {e}")
+
+    def _apply_wallpaper(self, item: Dict[str, Any]):
+        """Apply selected wallpaper - simplified version"""
+        print(f"Applying wallpaper: {item.get('path')}")
+        # For now, just trigger a change - could be enhanced to apply specific wallpaper
+        self._change_wallpaper_now()
+
+    def _on_closing(self):
+        """Handle window closing"""
+        # Don't stop the service - let it run in background
+        self.root.destroy()
 
     def run(self):
         """Start the GUI"""

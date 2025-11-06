@@ -1081,10 +1081,188 @@ class ModernWallpaperGUI:
             print(f"Error requesting wallpaper change: {e}")
 
     def _apply_wallpaper(self, item: Dict[str, Any]):
-        """Apply selected wallpaper - simplified version"""
-        print(f"Applying wallpaper: {item.get('path')}")
-        # For now, just trigger a change - could be enhanced to apply specific wallpaper
-        self._change_wallpaper_now()
+        """Show monitor selection dialog and apply wallpaper"""
+        self._show_monitor_selection_dialog(item)
+
+    def _show_monitor_selection_dialog(self, item: Dict[str, Any]):
+        """Show dialog to choose monitor for wallpaper"""
+        dialog = ctk.CTkToplevel(self.root)
+        dialog.title("Select Monitor")
+        dialog.geometry("450x500")
+        dialog.transient(self.root)
+        dialog.grab_set()
+
+        # Center dialog
+        dialog.update_idletasks()
+        x = self.root.winfo_x() + (self.root.winfo_width() // 2) - (dialog.winfo_width() // 2)
+        y = self.root.winfo_y() + (self.root.winfo_height() // 2) - (dialog.winfo_height() // 2)
+        dialog.geometry(f"+{x}+{y}")
+
+        # Title
+        title = ctk.CTkLabel(
+            dialog,
+            text="Choose Monitor",
+            font=ctk.CTkFont(size=20, weight="bold"),
+            text_color=self.COLORS['text_light']
+        )
+        title.pack(pady=(20, 10))
+
+        # Info text
+        info = ctk.CTkLabel(
+            dialog,
+            text="Choose which monitor to apply this wallpaper to:",
+            font=ctk.CTkFont(size=13),
+            text_color=self.COLORS['text_muted']
+        )
+        info.pack(pady=(0, 20))
+
+        # Get available monitors
+        from main import enumerate_monitors_user32, DesktopWallpaperController
+
+        monitors = []
+        try:
+            manager = DesktopWallpaperController()
+            monitors = manager.enumerate_monitors()
+            manager.close()
+        except Exception:
+            try:
+                monitors = enumerate_monitors_user32()
+            except Exception:
+                pass
+
+        # All Monitors button
+        all_btn = ctk.CTkButton(
+            dialog,
+            text="All Monitors",
+            font=ctk.CTkFont(size=14, weight="bold"),
+            fg_color=self.COLORS['accent'],
+            hover_color=self.COLORS['sidebar_hover'],
+            corner_radius=10,
+            height=50,
+            command=lambda: [dialog.destroy(), self._apply_wallpaper_to_monitor(item, "All Monitors", monitors)]
+        )
+        all_btn.pack(fill="x", padx=30, pady=10)
+
+        # Individual monitor buttons
+        for idx, monitor in enumerate(monitors):
+            monitor_name = f"Monitor {idx + 1} ({monitor.get('width')}x{monitor.get('height')})"
+            mon_btn = ctk.CTkButton(
+                dialog,
+                text=monitor_name,
+                font=ctk.CTkFont(size=13),
+                fg_color=self.COLORS['card_bg'],
+                hover_color=self.COLORS['card_hover'],
+                corner_radius=8,
+                height=45,
+                command=lambda m=monitor_name, i=idx: [dialog.destroy(),
+                                                        self._apply_wallpaper_to_monitor(item, m, monitors, i)]
+            )
+            mon_btn.pack(fill="x", padx=30, pady=5)
+
+        # Cancel button
+        cancel_btn = ctk.CTkButton(
+            dialog,
+            text="Cancel",
+            font=ctk.CTkFont(size=12),
+            fg_color=self.COLORS['main_bg'],
+            hover_color=self.COLORS['card_bg'],
+            corner_radius=8,
+            height=40,
+            command=dialog.destroy
+        )
+        cancel_btn.pack(fill="x", padx=30, pady=(15, 20))
+
+    def _apply_wallpaper_to_monitor(self, item: Dict[str, Any], monitor_selection: str = "All Monitors",
+                                   monitors_list: list = None, monitor_idx: int = None):
+        """Apply selected wallpaper to specified monitor"""
+        try:
+            from main import DesktopWallpaperController
+            from PIL import Image
+            import ctypes
+
+            wallpaper_path = item.get("path")
+
+            # Convert to BMP if needed
+            if not wallpaper_path.lower().endswith('.bmp'):
+                bmp_path = str(Path(wallpaper_path).with_suffix('.bmp'))
+                img = Image.open(wallpaper_path)
+                img.save(bmp_path, 'BMP')
+                wallpaper_path = bmp_path
+
+            if monitor_selection == "All Monitors":
+                # Apply to all monitors
+                ctypes.windll.user32.SystemParametersInfoW(20, 0, wallpaper_path, 3)
+                self._show_success_dialog("Wallpaper applied to all monitors!")
+            else:
+                # Apply to specific monitor
+                if monitor_idx is None:
+                    monitor_idx = int(monitor_selection.split()[1]) - 1
+
+                # Get monitors if not passed
+                if monitors_list is None:
+                    manager = DesktopWallpaperController()
+                    monitors_list = manager.enumerate_monitors()
+                else:
+                    manager = DesktopWallpaperController()
+
+                if monitor_idx < len(monitors_list):
+                    manager.set_wallpaper(monitors_list[monitor_idx]["id"], wallpaper_path)
+                    manager.close()
+                    self._show_success_dialog(f"Wallpaper applied to {monitor_selection}!")
+                else:
+                    manager.close()
+                    self._show_error_dialog("Invalid monitor selection")
+
+        except Exception as e:
+            self._show_error_dialog(f"Failed to apply wallpaper: {e}")
+
+    def _show_success_dialog(self, message: str):
+        """Show success message dialog"""
+        dialog = ctk.CTkToplevel(self.root)
+        dialog.title("Success")
+        dialog.geometry("400x150")
+        dialog.transient(self.root)
+        dialog.grab_set()
+
+        msg = ctk.CTkLabel(
+            dialog,
+            text=message,
+            font=ctk.CTkFont(size=13),
+            text_color=self.COLORS['text_light']
+        )
+        msg.pack(pady=30)
+
+        ok_btn = ctk.CTkButton(
+            dialog,
+            text="OK",
+            fg_color=self.COLORS['accent'],
+            command=dialog.destroy
+        )
+        ok_btn.pack(pady=10)
+
+    def _show_error_dialog(self, message: str):
+        """Show error message dialog"""
+        dialog = ctk.CTkToplevel(self.root)
+        dialog.title("Error")
+        dialog.geometry("400x150")
+        dialog.transient(self.root)
+        dialog.grab_set()
+
+        msg = ctk.CTkLabel(
+            dialog,
+            text=message,
+            font=ctk.CTkFont(size=13),
+            text_color=self.COLORS['warning']
+        )
+        msg.pack(pady=30)
+
+        ok_btn = ctk.CTkButton(
+            dialog,
+            text="OK",
+            fg_color=self.COLORS['accent'],
+            command=dialog.destroy
+        )
+        ok_btn.pack(pady=10)
 
     def _on_closing(self):
         """Handle window closing"""

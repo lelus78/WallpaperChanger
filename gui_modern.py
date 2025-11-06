@@ -510,50 +510,119 @@ class ModernWallpaperGUI:
         provider_section = self._create_section(scrollable, "Provider Settings")
         self._add_setting_row(provider_section, "Default Provider:", "dropdown", self.provider_var,
                             ["wallhaven", "pexels", "reddit"])
+        self._add_help_text(provider_section, "Choose which service to download wallpapers from")
         self._add_setting_row(provider_section, "Search Query:", "entry", self.query_var)
+        self._add_help_text(provider_section, "Keywords to search for wallpapers (e.g., 'nature', 'technology')")
         self._add_setting_row(provider_section, "Enable Provider Rotation", "checkbox", self.rotate_providers_var)
+        self._add_help_text(provider_section, "Automatically rotate between different providers")
 
         # Wallhaven Settings
         wallhaven_section = self._create_section(scrollable, "Wallhaven Settings")
         self._add_setting_row(wallhaven_section, "Purity Level:", "dropdown", self.purity_var,
                             ["100", "110", "111", "010", "001"])
+        self._add_help_text(wallhaven_section, "100=SFW only, 110=SFW+Sketchy, 111=All content")
         self._add_setting_row(wallhaven_section, "Min Resolution:", "dropdown", self.resolution_var,
                             ["1920x1080", "2560x1440", "3440x1440", "3840x2160"])
+        self._add_help_text(wallhaven_section, "Minimum resolution for downloaded wallpapers")
         self._add_setting_row(wallhaven_section, "Sorting:", "dropdown", self.sorting_var,
                             ["random", "toplist", "favorites", "views"])
+        self._add_help_text(wallhaven_section, "How to sort wallpapers (toplist=most popular)")
         self._add_setting_row(wallhaven_section, "Top Range:", "dropdown", self.toprange_var,
                             ["1d", "3d", "1w", "1M", "3M", "6M", "1y"])
+        self._add_help_text(wallhaven_section, "Time range for toplist (1d=1 day, 1M=1 month, etc.)")
 
         # Pexels Settings
         pexels_section = self._create_section(scrollable, "Pexels Settings")
         self._add_setting_row(pexels_section, "Mode:", "dropdown", self.pexels_mode_var,
                             ["search", "curated"])
+        self._add_help_text(pexels_section, "search=Use search query, curated=Get curated high-quality photos")
 
         # Reddit Settings
         reddit_section = self._create_section(scrollable, "Reddit Settings")
         self._add_setting_row(reddit_section, "Subreddits (comma separated):", "entry", self.reddit_subreddits_var)
+        self._add_help_text(reddit_section, "e.g., wallpapers, wallpaper, EarthPorn")
         self._add_setting_row(reddit_section, "Sort:", "dropdown", self.reddit_sort_var,
                             ["hot", "new", "rising", "top", "controversial"])
+        self._add_help_text(reddit_section, "How to sort posts (hot=trending now, top=most upvoted)")
         self._add_setting_row(reddit_section, "Time Filter:", "dropdown", self.reddit_time_var,
                             ["hour", "day", "week", "month", "year", "all"])
+        self._add_help_text(reddit_section, "Time range for 'top' and 'controversial' sorts")
         self._add_setting_row(reddit_section, "Posts per fetch:", "spinbox", self.reddit_limit_var, [10, 100])
+        self._add_help_text(reddit_section, "Number of posts to fetch per request")
         self._add_setting_row(reddit_section, "Minimum upvotes:", "spinbox", self.reddit_score_var, [0, 100000])
+        self._add_help_text(reddit_section, "Only download posts with at least this many upvotes")
         self._add_setting_row(reddit_section, "Include NSFW posts", "checkbox", self.reddit_nsfw_var)
+        self._add_help_text(reddit_section, "Include posts marked as NSFW")
 
         # Scheduler Settings
         scheduler_section = self._create_section(scrollable, "Scheduler Settings")
         self._add_setting_row(scheduler_section, "Enable Scheduler", "checkbox", self.scheduler_enabled_var)
+        self._add_help_text(scheduler_section, "Automatically change wallpaper at regular intervals")
         self._add_setting_row(scheduler_section, "Interval (minutes):", "spinbox", self.interval_var, [1, 1440])
+        self._add_help_text(scheduler_section, "How often to change wallpaper (in minutes)")
         self._add_setting_row(scheduler_section, "Jitter (minutes):", "spinbox", self.jitter_var, [0, 60])
+        self._add_help_text(scheduler_section, "Random variation to add to interval (prevents predictability)")
 
         # Cache Settings
         cache_section = self._create_section(scrollable, "Cache Settings")
         self._add_setting_row(cache_section, "Max Cache Items:", "spinbox", self.cache_max_var, [10, 500])
+        self._add_help_text(cache_section, "Maximum number of wallpapers to store in cache")
         self._add_setting_row(cache_section, "Enable Offline Rotation", "checkbox", self.cache_offline_var)
+        self._add_help_text(cache_section, "Use cached wallpapers when internet is unavailable")
 
         # Hotkey Settings
         hotkey_section = self._create_section(scrollable, "Hotkey Settings")
         self._add_setting_row(hotkey_section, "Hotkey:", "entry", self.keybind_var)
+        self._add_help_text(hotkey_section, "Use format: ctrl+alt+w, ctrl+shift+p, etc.")
+
+        # Advanced Settings - API Keys
+        self._add_section_header(scrollable, "ADVANCED SETTINGS")
+
+        # Load API keys from .env
+        env_path = Path(__file__).parent / '.env'
+        current_wallhaven_key = ""
+        current_pexels_key = ""
+        current_openweather_key = ""
+
+        if env_path.exists():
+            with open(env_path, 'r', encoding='utf-8') as f:
+                for line in f:
+                    if line.startswith('WALLHAVEN_API_KEY='):
+                        current_wallhaven_key = line.split('=', 1)[1].strip()
+                    elif line.startswith('PEXELS_API_KEY='):
+                        current_pexels_key = line.split('=', 1)[1].strip()
+                    elif line.startswith('OPENWEATHER_API_KEY='):
+                        current_openweather_key = line.split('=', 1)[1].strip()
+
+        self.wallhaven_api_var = ctk.StringVar(value=current_wallhaven_key)
+        self.pexels_api_var = ctk.StringVar(value=current_pexels_key)
+        self.weather_api_var = ctk.StringVar(value=current_openweather_key)
+
+        api_section = self._create_section(scrollable, "API Keys")
+        self._add_setting_row(api_section, "Wallhaven API Key:", "entry", self.wallhaven_api_var)
+        self._add_help_text(api_section, "Get your API key at: https://wallhaven.cc/settings/account")
+        self._add_setting_row(api_section, "Pexels API Key:", "entry", self.pexels_api_var)
+        self._add_help_text(api_section, "Get your API key at: https://www.pexels.com/api/new/")
+        self._add_setting_row(api_section, "OpenWeatherMap API Key:", "entry", self.weather_api_var)
+        self._add_help_text(api_section, "Free tier: 1000 calls/day - Get it at: https://home.openweathermap.org/api_keys")
+
+        # Cache Directory
+        from config import CacheSettings
+        cache_dir = CacheSettings.get("directory") or os.path.join(os.path.expanduser("~"), "WallpaperChangerCache")
+        self.cache_dir_var = ctk.StringVar(value=cache_dir)
+
+        folders_section = self._create_section(scrollable, "Folders Configuration")
+        self._add_setting_row(folders_section, "Cache Directory:", "entry", self.cache_dir_var)
+        self._add_help_text(folders_section, "Location where wallpapers are cached. Leave empty for default.")
+
+        # Advanced Scheduler Settings
+        from config import SchedulerSettings
+        self.initial_delay_var = ctk.IntVar(value=SchedulerSettings.get("initial_delay_minutes", 1))
+
+        adv_scheduler_section = self._create_section(scrollable, "Advanced Scheduler Settings")
+        self._add_setting_row(adv_scheduler_section, "Initial Delay (minutes):", "spinbox",
+                            self.initial_delay_var, [0, 60])
+        self._add_help_text(adv_scheduler_section, "Delay before first wallpaper change after startup")
 
         # Save button
         save_btn = ctk.CTkButton(
@@ -694,6 +763,35 @@ class ModernWallpaperGUI:
                 )
                 down_btn.pack(side="left", padx=2)
 
+    def _add_help_text(self, parent, text):
+        """Add a help/description text below a setting"""
+        help_label = ctk.CTkLabel(
+            parent,
+            text=f"  {text}",
+            text_color=self.COLORS['text_muted'],
+            font=ctk.CTkFont(size=11),
+            wraplength=700,
+            justify="left"
+        )
+        help_label.pack(fill="x", padx=25, pady=(0, 8), anchor="w")
+
+    def _add_section_header(self, parent, text):
+        """Add a section header (e.g., ADVANCED SETTINGS)"""
+        header_frame = ctk.CTkFrame(parent, fg_color="transparent")
+        header_frame.pack(fill="x", pady=(30, 10), padx=5)
+
+        header_label = ctk.CTkLabel(
+            header_frame,
+            text=text,
+            font=ctk.CTkFont(size=18, weight="bold"),
+            text_color=self.COLORS['accent']
+        )
+        header_label.pack(anchor="w")
+
+        # Separator line
+        separator = ctk.CTkFrame(header_frame, height=2, fg_color=self.COLORS['accent'])
+        separator.pack(fill="x", pady=(5, 0))
+
     def _save_settings(self):
         """Save all settings to config.py"""
         try:
@@ -743,16 +841,61 @@ class ModernWallpaperGUI:
                     new_lines.append(f'    "interval_minutes": {self.interval_var.get()},\n')
                 elif '"jitter_minutes":' in line:
                     new_lines.append(f'    "jitter_minutes": {self.jitter_var.get()},\n')
+                elif '"initial_delay_minutes":' in line:
+                    new_lines.append(f'    "initial_delay_minutes": {self.initial_delay_var.get()},\n')
                 elif '"max_items":' in line:
                     new_lines.append(f'    "max_items": {self.cache_max_var.get()},\n')
                 elif '"enable_offline_rotation":' in line:
                     new_lines.append(f'    "enable_offline_rotation": {self.cache_offline_var.get()},\n')
+                elif '"directory":' in line and 'CacheSettings' in ''.join(new_lines[-3:]):
+                    cache_dir_value = self.cache_dir_var.get().strip()
+                    if cache_dir_value:
+                        new_lines.append(f'    "directory": r"{cache_dir_value}",\n')
+                    else:
+                        new_lines.append(f'    "directory": "",\n')
                 else:
                     new_lines.append(line)
 
             # Write updated config
             with open(config_path, 'w', encoding='utf-8') as f:
                 f.writelines(new_lines)
+
+            # Save API keys to .env
+            env_path = Path(__file__).parent / '.env'
+            env_lines = []
+
+            if env_path.exists():
+                with open(env_path, 'r', encoding='utf-8') as f:
+                    env_lines = f.readlines()
+
+            # Update or add API keys
+            updated_keys = {
+                'WALLHAVEN_API_KEY': self.wallhaven_api_var.get(),
+                'PEXELS_API_KEY': self.pexels_api_var.get(),
+                'OPENWEATHER_API_KEY': self.weather_api_var.get()
+            }
+
+            new_env_lines = []
+            keys_found = set()
+
+            for line in env_lines:
+                found = False
+                for key, value in updated_keys.items():
+                    if line.startswith(f'{key}='):
+                        new_env_lines.append(f'{key}={value}\n')
+                        keys_found.add(key)
+                        found = True
+                        break
+                if not found:
+                    new_env_lines.append(line)
+
+            # Add missing keys
+            for key, value in updated_keys.items():
+                if key not in keys_found:
+                    new_env_lines.append(f'{key}={value}\n')
+
+            with open(env_path, 'w', encoding='utf-8') as f:
+                f.writelines(new_env_lines)
 
             # Show success message
             success_dialog = ctk.CTkToplevel(self.root)

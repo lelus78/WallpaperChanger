@@ -31,6 +31,7 @@ class ModernWallpaperGUI:
         'accent': '#E94560',
         'text_light': '#FFFFFF',
         'text_muted': '#B0B0B0',
+        'warning': '#FFD93D',
     }
 
     def __init__(self):
@@ -83,9 +84,8 @@ class ModernWallpaperGUI:
         nav_items = [
             ("Home", "🏠"),
             ("Wallpapers", "🖼️"),
-            ("Downloads", "⬇️"),
             ("Settings", "⚙️"),
-            ("Feedback", "💬"),
+            ("Logs", "📋"),
         ]
 
         self.nav_buttons = []
@@ -288,9 +288,11 @@ class ModernWallpaperGUI:
             img_label = ctk.CTkLabel(
                 card,
                 image=photo,
-                text=""
+                text="",
+                width=320,
+                height=200
             )
-            img_label.pack(padx=10, pady=10)
+            img_label.pack(padx=10, pady=10, fill="both", expand=False)
 
             # Info section
             info_frame = ctk.CTkFrame(card, fg_color="transparent")
@@ -373,12 +375,10 @@ class ModernWallpaperGUI:
             self._show_home_view()
         elif view == "Wallpapers":
             self._show_wallpapers_view()
-        elif view == "Downloads":
-            self._show_downloads_view()
         elif view == "Settings":
             self._show_settings_view()
-        elif view == "Feedback":
-            self._show_feedback_view()
+        elif view == "Logs":
+            self._show_logs_view()
 
     def _update_nav_buttons(self):
         """Update navigation button styles"""
@@ -425,26 +425,8 @@ class ModernWallpaperGUI:
         )
         change_btn.pack(pady=20)
 
-    def _show_downloads_view(self):
-        """Show downloads view"""
-        title = ctk.CTkLabel(
-            self.content_container,
-            text="Downloads",
-            font=ctk.CTkFont(size=24, weight="bold"),
-            text_color=self.COLORS['text_light']
-        )
-        title.pack(pady=(30, 10), padx=20, anchor="w")
-
-        info = ctk.CTkLabel(
-            self.content_container,
-            text="Downloaded wallpapers will appear here.\nThis feature is coming soon!",
-            font=ctk.CTkFont(size=14),
-            text_color=self.COLORS['text_muted']
-        )
-        info.pack(pady=100)
-
     def _show_settings_view(self):
-        """Show settings view"""
+        """Show settings view with real config options"""
         scrollable = ctk.CTkScrollableFrame(
             self.content_container,
             fg_color="transparent"
@@ -459,14 +441,48 @@ class ModernWallpaperGUI:
         )
         title.pack(pady=(10, 20), anchor="w")
 
-        # Settings sections
-        sections = [
-            ("Appearance", ["Dark Mode", "Accent Color", "Font Size"]),
-            ("Wallpaper", ["Auto-change Interval", "Fit Mode", "Screen"]),
-            ("Cache", ["Cache Size", "Clear Cache", "Cache Location"]),
+        # Note about opening full settings
+        note_frame = ctk.CTkFrame(scrollable, fg_color=self.COLORS['card_bg'], corner_radius=12)
+        note_frame.pack(fill="x", pady=(0, 20))
+
+        note_text = ctk.CTkLabel(
+            note_frame,
+            text="⚠️  For advanced configuration, use the detailed settings GUI",
+            font=ctk.CTkFont(size=13),
+            text_color=self.COLORS['warning'] if 'warning' in self.COLORS else self.COLORS['text_muted']
+        )
+        note_text.pack(pady=15, padx=20)
+
+        open_full_btn = ctk.CTkButton(
+            note_frame,
+            text="Open Full Settings GUI",
+            fg_color=self.COLORS['accent'],
+            hover_color=self.COLORS['sidebar_hover'],
+            corner_radius=8,
+            height=35,
+            command=self._open_full_settings
+        )
+        open_full_btn.pack(pady=(0, 15), padx=20, fill="x")
+
+        # Quick Settings sections
+        sections_data = [
+            ("Provider Settings", [
+                ("Default Provider", "Provider to use for wallpapers"),
+                ("Enable Rotation", "Rotate between multiple providers"),
+                ("Search Query", "Search term for wallpapers"),
+            ]),
+            ("Cache Settings", [
+                ("Max Items", "Maximum wallpapers in cache"),
+                ("Enable Offline Rotation", "Use cached wallpapers when offline"),
+                ("Cache Directory", "Location of cached wallpapers"),
+            ]),
+            ("Scheduler", [
+                ("Auto-change Enabled", "Automatically change wallpaper"),
+                ("Change Interval", "Time between wallpaper changes"),
+            ]),
         ]
 
-        for section_title, options in sections:
+        for section_title, options in sections_data:
             section_frame = ctk.CTkFrame(scrollable, fg_color=self.COLORS['card_bg'], corner_radius=12)
             section_frame.pack(fill="x", pady=10)
 
@@ -478,54 +494,120 @@ class ModernWallpaperGUI:
             )
             section_label.pack(pady=15, padx=20, anchor="w")
 
-            for option in options:
-                option_label = ctk.CTkLabel(
-                    section_frame,
-                    text=option,
-                    text_color=self.COLORS['text_muted']
-                )
-                option_label.pack(pady=8, padx=20, anchor="w")
+            for opt_name, opt_desc in options:
+                opt_row = ctk.CTkFrame(section_frame, fg_color="transparent")
+                opt_row.pack(fill="x", padx=20, pady=5)
 
-    def _show_feedback_view(self):
-        """Show feedback view"""
+                opt_label = ctk.CTkLabel(
+                    opt_row,
+                    text=opt_name,
+                    text_color=self.COLORS['text_light'],
+                    font=ctk.CTkFont(size=13)
+                )
+                opt_label.pack(side="left", anchor="w")
+
+                opt_info = ctk.CTkLabel(
+                    opt_row,
+                    text=opt_desc,
+                    text_color=self.COLORS['text_muted'],
+                    font=ctk.CTkFont(size=11)
+                )
+                opt_info.pack(side="right", anchor="e")
+
+            ctk.CTkLabel(section_frame, text="").pack(pady=5)  # Spacer
+
+    def _show_logs_view(self):
+        """Show logs view"""
         title = ctk.CTkLabel(
             self.content_container,
-            text="Feedback",
+            text="Application Logs",
             font=ctk.CTkFont(size=24, weight="bold"),
             text_color=self.COLORS['text_light']
         )
-        title.pack(pady=(30, 10), padx=20, anchor="w")
+        title.pack(pady=(20, 10), padx=20, anchor="w")
 
-        info = ctk.CTkLabel(
-            self.content_container,
-            text="Send us your feedback and suggestions!",
-            font=ctk.CTkFont(size=14),
-            text_color=self.COLORS['text_muted']
-        )
-        info.pack(pady=(0, 30), padx=20, anchor="w")
+        # Buttons frame
+        btn_frame = ctk.CTkFrame(self.content_container, fg_color="transparent")
+        btn_frame.pack(fill="x", padx=20, pady=(0, 10))
 
-        # Feedback form
-        form_frame = ctk.CTkFrame(self.content_container, fg_color=self.COLORS['card_bg'], corner_radius=12)
-        form_frame.pack(fill="both", expand=True, padx=20, pady=(0, 20))
-
-        textbox = ctk.CTkTextbox(
-            form_frame,
-            height=200,
-            fg_color=self.COLORS['main_bg'],
-            border_width=0,
-            corner_radius=8
-        )
-        textbox.pack(fill="both", expand=True, padx=20, pady=20)
-
-        send_btn = ctk.CTkButton(
-            form_frame,
-            text="Send Feedback",
+        refresh_btn = ctk.CTkButton(
+            btn_frame,
+            text="Refresh Logs",
+            width=120,
+            height=32,
             fg_color=self.COLORS['accent'],
             hover_color=self.COLORS['sidebar_hover'],
             corner_radius=8,
-            height=40
+            command=self._refresh_logs
         )
-        send_btn.pack(pady=(0, 20), padx=20, fill="x")
+        refresh_btn.pack(side="left", padx=(0, 10))
+
+        clear_btn = ctk.CTkButton(
+            btn_frame,
+            text="Clear Display",
+            width=120,
+            height=32,
+            fg_color=self.COLORS['card_bg'],
+            hover_color=self.COLORS['card_hover'],
+            corner_radius=8,
+            command=self._clear_log_display
+        )
+        clear_btn.pack(side="left")
+
+        # Log text area
+        log_frame = ctk.CTkFrame(self.content_container, fg_color=self.COLORS['card_bg'], corner_radius=12)
+        log_frame.pack(fill="both", expand=True, padx=20, pady=(0, 20))
+
+        self.log_textbox = ctk.CTkTextbox(
+            log_frame,
+            fg_color=self.COLORS['main_bg'],
+            text_color=self.COLORS['text_light'],
+            border_width=0,
+            corner_radius=8,
+            font=ctk.CTkFont(family="Consolas", size=11)
+        )
+        self.log_textbox.pack(fill="both", expand=True, padx=15, pady=15)
+
+        # Load logs
+        self._load_logs()
+
+    def _open_full_settings(self):
+        """Open the full settings GUI"""
+        import subprocess
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        gui_script = os.path.join(script_dir, "gui_config.py")
+        try:
+            subprocess.Popen(["pythonw", gui_script], shell=False)
+        except Exception as e:
+            print(f"Failed to open settings GUI: {e}")
+
+    def _load_logs(self):
+        """Load logs from wallpaperchanger.log"""
+        log_file = Path(__file__).parent / "wallpaperchanger.log"
+        if log_file.exists():
+            try:
+                with open(log_file, "r", encoding="utf-8") as f:
+                    lines = f.readlines()
+                    # Show last 500 lines
+                    recent_lines = lines[-500:]
+                    self.log_textbox.delete("1.0", "end")
+                    self.log_textbox.insert("1.0", "".join(recent_lines))
+                    self.log_textbox.see("end")  # Scroll to bottom
+            except Exception as e:
+                self.log_textbox.delete("1.0", "end")
+                self.log_textbox.insert("1.0", f"Error loading logs: {e}")
+        else:
+            self.log_textbox.delete("1.0", "end")
+            self.log_textbox.insert("1.0", "No log file found.\n\nLogs will appear here when the wallpaper service is running.")
+
+    def _refresh_logs(self):
+        """Refresh the log display"""
+        self._load_logs()
+
+    def _clear_log_display(self):
+        """Clear the log display"""
+        self.log_textbox.delete("1.0", "end")
+        self.log_textbox.insert("1.0", "Log display cleared. Click 'Refresh Logs' to reload.")
 
     def run(self):
         """Start the GUI"""

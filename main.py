@@ -34,6 +34,7 @@ from config import (
 from playlist_manager import PlaylistManager, PlaylistStep
 from preset_manager import Preset, PresetManager
 from scheduler_service import SchedulerService
+from statistics_manager import StatisticsManager
 from tray_app import TrayApp
 from weather_rotation import WeatherDecision, WeatherRotationController
 from weather_overlay import WeatherOverlay, WeatherInfo
@@ -238,6 +239,46 @@ class DesktopWallpaperController:
 
     def set_wallpaper(self, monitor_id: str, image_path: str) -> None:
         self._check(self._vtable.SetWallpaper(self._iface, monitor_id, image_path))
+
+    def get_current_wallpaper(self, monitor_id: Optional[str] = None) -> Optional[str]:
+        """Get the current wallpaper path for a specific monitor or the first monitor"""
+        try:
+            if monitor_id is None:
+                # Get first monitor if not specified
+                monitors = self.enumerate_monitors()
+                if not monitors:
+                    return None
+                monitor_id = monitors[0]["id"]
+
+            path_ptr = LPWSTR()
+            hr = self._vtable.GetWallpaper(self._iface, monitor_id, ctypes.byref(path_ptr))
+            if hr != 0:
+                return None
+
+            wallpaper_path = path_ptr.value
+            self._ole32.CoTaskMemFree(ctypes.cast(path_ptr, LPVOID))
+            return wallpaper_path
+        except Exception:
+            return None
+
+    def get_all_wallpapers(self) -> List[Dict[str, str]]:
+        """Get current wallpaper for all monitors"""
+        wallpapers = []
+        try:
+            monitors = self.enumerate_monitors()
+            for idx, monitor in enumerate(monitors):
+                path = self.get_current_wallpaper(monitor["id"])
+                if path:
+                    wallpapers.append({
+                        "monitor_index": idx,
+                        "monitor_id": monitor["id"],
+                        "path": path,
+                        "width": monitor["width"],
+                        "height": monitor["height"]
+                    })
+        except Exception:
+            pass
+        return wallpapers
 
     def close(self) -> None:
         if hasattr(self, "_vtable") and self._iface:
@@ -920,6 +961,19 @@ class WallpaperApp:
             note=weather_note,
         )
 
+        # Log wallpaper change to statistics
+        stats_manager = StatisticsManager()
+        for line, prov in results:
+            # Extract wallpaper path from result line if available
+            # Results format is typically "Monitor X: source_info"
+            # We need to get the actual file path, so we'll use the cached_path from processing
+            # For now, log with provider info
+            stats_manager.log_wallpaper_change(
+                wallpaper_path=f"auto_{trigger}",  # Placeholder - we'll improve this
+                provider=prov,
+                action=trigger
+            )
+
     def apply_cached_wallpaper(self, trigger: str) -> bool:
         if not self.cache_manager.enable_rotation:
             return False
@@ -937,10 +991,13 @@ class WallpaperApp:
             except OSError:
                 monitors = []
 
+        # Get banned wallpapers list
+        banned_paths = self.stats_manager.get_banned_wallpapers()
+
         if not monitors:
             if manager:
                 manager.close()
-            entry = self.cache_manager.get_random()
+            entry = self.cache_manager.get_random(banned_paths=banned_paths)
             if not entry:
                 return False
             bmp_path = self._convert_to_bmp(entry["path"], SINGLE_BMP_NAME, None)
@@ -950,8 +1007,8 @@ class WallpaperApp:
 
         if not manager:
             entries = [
-                self.cache_manager.get_random(monitor_label=f"Monitor {idx + 1}")
-                or self.cache_manager.get_random()
+                self.cache_manager.get_random(monitor_label=f"Monitor {idx + 1}", banned_paths=banned_paths)
+                or self.cache_manager.get_random(banned_paths=banned_paths)
                 for idx in range(len(monitors))
             ]
             results = self._apply_span_cached(monitors, entries)
@@ -966,7 +1023,7 @@ class WallpaperApp:
         try:
             for index, monitor in enumerate(monitors):
                 label = f"Monitor {index + 1}"
-                entry = self.cache_manager.get_random(monitor_label=label) or self.cache_manager.get_random()
+                entry = self.cache_manager.get_random(monitor_label=label, banned_paths=banned_paths) or self.cache_manager.get_random(banned_paths=banned_paths)
                 if not entry:
                     continue
                 bmp_name = BMP_TEMPLATE.format(index=index)

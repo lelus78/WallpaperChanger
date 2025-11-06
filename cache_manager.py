@@ -64,7 +64,8 @@ class CacheManager:
             self._save()
             return target_path
 
-    def get_random(self, preset: Optional[str] = None, monitor_label: Optional[str] = None) -> Optional[Dict]:
+    def get_random(self, preset: Optional[str] = None, monitor_label: Optional[str] = None,
+                   banned_paths: Optional[List[str]] = None) -> Optional[Dict]:
         with self._lock:
             items = list(self._index.get("items", []))
 
@@ -74,6 +75,10 @@ class CacheManager:
             filtered = [item for item in items if item.get("monitor") == monitor_label]
             if filtered:
                 items = filtered
+
+        # Exclude banned wallpapers
+        if banned_paths:
+            items = [item for item in items if item.get("path") not in banned_paths]
 
         if not items:
             return None

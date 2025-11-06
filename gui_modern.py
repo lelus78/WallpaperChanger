@@ -14,6 +14,13 @@ import tkinter as tk
 
 from cache_manager import CacheManager
 from config import CacheSettings
+from statistics_manager import StatisticsManager
+import matplotlib
+matplotlib.use('TkAgg')  # Use TkAgg backend for embedding in tkinter
+from matplotlib.figure import Figure
+from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+import threading
+import time
 
 
 # Set appearance mode and color theme
@@ -59,6 +66,15 @@ class ModernWallpaperGUI:
         # Thumbnail cache
         self.thumbnail_cache = {}
 
+        # Statistics manager
+        self.stats_manager = StatisticsManager()
+
+        # Toast notifications
+        self.toast_windows = []
+
+        # Current wallpaper tracking
+        self.current_wallpaper = None
+
         # Main app process
         self.main_process = None
         self.pid_file = Path(__file__).parent / "wallpaperchanger.pid"
@@ -94,19 +110,20 @@ class ModernWallpaperGUI:
         )
         title_label.grid(row=0, column=0, padx=20, pady=(30, 40))
 
-        # Navigation buttons with icons (text-based for now)
+        # Navigation buttons with colored icons
         nav_items = [
-            ("Home", "🏠"),
-            ("Wallpapers", "🖼️"),
-            ("Settings", "⚙️"),
-            ("Logs", "📋"),
+            ("Home", "●", "#FFD93D"),      # Yellow home icon
+            ("Wallpapers", "●", "#00e676"), # Green wallpapers icon
+            ("Settings", "●", "#89b4fa"),   # Blue settings icon
+            ("Logs", "●", "#ff6b81"),       # Red logs icon
         ]
 
         self.nav_buttons = []
-        for idx, (text, icon) in enumerate(nav_items, start=1):
+        for idx, (text, icon, color) in enumerate(nav_items, start=1):
+            # Create button with icon and text directly
             btn = ctk.CTkButton(
                 self.sidebar,
-                text=f"  {text}",
+                text=f"{icon}  {text}",
                 font=ctk.CTkFont(size=14),
                 fg_color="transparent",
                 text_color=self.COLORS['text_light'],
@@ -117,7 +134,9 @@ class ModernWallpaperGUI:
                 command=lambda t=text: self._navigate(t)
             )
             btn.grid(row=idx, column=0, padx=15, pady=5, sticky="ew")
-            self.nav_buttons.append(btn)
+
+            # Store reference
+            self.nav_buttons.append((btn, icon, color))
 
         # Set "Wallpapers" as active by default
         self.active_view = "Wallpapers"
@@ -229,8 +248,8 @@ class ModernWallpaperGUI:
         sort_menu = ctk.CTkOptionMenu(
             filter_frame,
             variable=self.sort_var,
-            values=["Newest First", "Oldest First", "Highest Resolution"],
-            width=150,
+            values=["Newest First", "Oldest First", "Highest Resolution", "Favorites Only", "Top Rated", "Banned Only"],
+            width=170,
             fg_color=self.COLORS['card_bg'],
             button_color=self.COLORS['accent'],
             button_hover_color=self.COLORS['sidebar_hover'],
@@ -238,13 +257,24 @@ class ModernWallpaperGUI:
         )
         sort_menu.pack(side="left")
 
-        # Scrollable frame for wallpaper grid
+        # Scrollable frame for wallpaper grid with faster scrolling
         scrollable_frame = ctk.CTkScrollableFrame(
             self.content_container,
             corner_radius=0,
-            fg_color="transparent"
+            fg_color="transparent",
+            scrollbar_button_color=self.COLORS['accent'],
+            scrollbar_button_hover_color=self.COLORS['sidebar_hover']
         )
         scrollable_frame.grid(row=1, column=0, sticky="nsew", padx=20, pady=20)
+
+        # Increase scroll speed significantly - bind to the frame itself, not globally
+        def fast_scroll(event):
+            try:
+                scrollable_frame._parent_canvas.yview_scroll(int(-3*(event.delta/120)), "units")
+            except:
+                pass  # Ignore if canvas doesn't exist
+
+        scrollable_frame.bind("<MouseWheel>", fast_scroll)
 
         # Configure grid for wallpaper cards (3 columns, fixed width to prevent stretching)
         for i in range(3):
@@ -265,6 +295,51 @@ class ModernWallpaperGUI:
         # Get cached items
         items = self.cache_manager.list_entries()
 
+        # Apply sorting and filtering
+        sort_choice = self.sort_var.get() if hasattr(self, 'sort_var') else "Newest First"
+
+        if sort_choice == "Banned Only":
+            # Filter only banned wallpapers
+            banned = self.stats_manager.get_banned_wallpapers()
+            items = [item for item in items if item.get("path") in banned]
+        elif sort_choice == "Favorites Only":
+            # Filter only favorites (exclude banned)
+            favorites = self.stats_manager.get_favorites()
+            items = [item for item in items if item.get("path") in favorites and not self.stats_manager.is_banned(item.get("path"))]
+        elif sort_choice == "Top Rated":
+            # Sort by rating (exclude banned)
+            items = [item for item in items if not self.stats_manager.is_banned(item.get("path"))]
+            items = sorted(items, key=lambda x: self.stats_manager.get_rating(x.get("path", "")), reverse=True)
+        elif sort_choice == "Oldest First":
+            # Exclude banned wallpapers
+            items = [item for item in items if not self.stats_manager.is_banned(item.get("path"))]
+            items = list(reversed(items))
+        elif sort_choice == "Highest Resolution":
+            # Exclude banned wallpapers
+            items = [item for item in items if not self.stats_manager.is_banned(item.get("path"))]
+            def get_resolution(item):
+                try:
+                    from PIL import Image
+                    img = Image.open(item.get("path"))
+                    return img.size[0] * img.size[1]
+                except:
+                    return 0
+            items = sorted(items, key=get_resolution, reverse=True)
+        else:
+            # Default "Newest First" - exclude banned wallpapers
+            items = [item for item in items if not self.stats_manager.is_banned(item.get("path"))]
+
+        # Show message if no items after filtering
+        if not items:
+            no_items_label = ctk.CTkLabel(
+                scrollable_frame,
+                text="No wallpapers match the selected filter.",
+                font=ctk.CTkFont(size=16),
+                text_color=self.COLORS['text_muted']
+            )
+            no_items_label.grid(row=0, column=0, columnspan=3, pady=100)
+            return
+
         # Create cards in grid (3 columns)
         for idx, item in enumerate(items[:30]):  # Show up to 30 wallpapers
             row = idx // 3
@@ -272,18 +347,29 @@ class ModernWallpaperGUI:
             self._create_wallpaper_card(item, row, col, scrollable_frame)
 
     def _create_wallpaper_card(self, item: Dict[str, Any], row: int, col: int, parent):
-        """Create a modern wallpaper card with rounded corners"""
-        # Card container - FIXED: removed sticky to prevent horizontal stretching
+        """Create a modern wallpaper card with rounded corners and hover effects"""
+        # Card container with hover effect
         card = ctk.CTkFrame(
             parent,
             fg_color=self.COLORS['card_bg'],
             corner_radius=15,
-            border_width=0,
+            border_width=2,
+            border_color=self.COLORS['card_bg'],  # Same as background initially
             width=340,
             height=320
         )
         card.grid(row=row, column=col, padx=10, pady=10)
         card.grid_propagate(False)  # Prevent card from shrinking
+
+        # Hover effect functions
+        def on_enter(e):
+            card.configure(border_color=self.COLORS['accent'])
+
+        def on_leave(e):
+            card.configure(border_color=self.COLORS['card_bg'])
+
+        card.bind("<Enter>", on_enter)
+        card.bind("<Leave>", on_leave)
 
         try:
             # Load image
@@ -312,9 +398,9 @@ class ModernWallpaperGUI:
             )
             img_label.pack(padx=10, pady=10, fill="both", expand=False)
 
-            # Info section
+            # Info section - top row
             info_frame = ctk.CTkFrame(card, fg_color="transparent")
-            info_frame.pack(fill="x", padx=15, pady=(0, 10))
+            info_frame.pack(fill="x", padx=15, pady=(0, 5))
 
             # Resolution badge
             resolution_text = f"{original_size[0]}x{original_size[1]}"
@@ -352,6 +438,68 @@ class ModernWallpaperGUI:
             )
             provider_badge.pack(side="left")
 
+            # Ban button
+            is_banned = self.stats_manager.is_banned(image_path)
+            ban_btn = ctk.CTkButton(
+                info_frame,
+                text="🚫" if is_banned else "⊘",
+                font=ctk.CTkFont(size=16),
+                width=30,
+                height=30,
+                fg_color="#ff4444" if is_banned else "transparent",
+                hover_color="#cc0000",
+                corner_radius=15,
+                command=lambda p=image_path, b=None: self._toggle_ban(p, b)
+            )
+            ban_btn.pack(side="right", padx=(5, 0))
+            # Store reference for updating
+            ban_btn.configure(command=lambda p=image_path, b=ban_btn: self._toggle_ban(p, b))
+
+            # Favorite button
+            is_fav = self.stats_manager.is_favorite(image_path)
+            fav_btn = ctk.CTkButton(
+                info_frame,
+                text="♥" if is_fav else "♡",
+                font=ctk.CTkFont(size=16),
+                width=30,
+                height=30,
+                fg_color="#ff6b81" if is_fav else "transparent",
+                hover_color="#ff4757",
+                corner_radius=15,
+                command=lambda p=image_path, b=None: self._toggle_favorite(p, b)
+            )
+            fav_btn.pack(side="right", padx=(5, 0))
+            # Store reference for updating
+            fav_btn.configure(command=lambda p=image_path, b=fav_btn: self._toggle_favorite(p, b))
+
+            # Rating section
+            rating_frame = ctk.CTkFrame(card, fg_color="transparent")
+            rating_frame.pack(fill="x", padx=15, pady=(0, 5))
+
+            current_rating = self.stats_manager.get_rating(image_path)
+
+            # Create 5 star buttons
+            star_buttons = []
+            for i in range(1, 6):
+                star_text = "★" if i <= current_rating else "☆"
+                star_btn = ctk.CTkButton(
+                    rating_frame,
+                    text=star_text,
+                    font=ctk.CTkFont(size=16),
+                    width=30,
+                    height=25,
+                    fg_color="transparent",
+                    hover_color=self.COLORS['card_hover'],
+                    text_color="#ffd700" if i <= current_rating else self.COLORS['text_muted'],
+                    command=lambda r=i, p=image_path, btns=None: self._set_rating(p, r, btns)
+                )
+                star_btn.pack(side="left", padx=1)
+                star_buttons.append(star_btn)
+
+            # Update command with button references
+            for i, star_btn in enumerate(star_buttons, 1):
+                star_btn.configure(command=lambda r=i, p=image_path, btns=star_buttons: self._set_rating(p, r, btns))
+
             # Apply button
             apply_btn = ctk.CTkButton(
                 card,
@@ -360,10 +508,10 @@ class ModernWallpaperGUI:
                 fg_color=self.COLORS['accent'],
                 hover_color=self.COLORS['sidebar_hover'],
                 corner_radius=10,
-                height=40,
+                height=35,
                 command=lambda i=item: self._apply_wallpaper(i)
             )
-            apply_btn.pack(fill="x", padx=15, pady=(0, 15))
+            apply_btn.pack(fill="x", padx=15, pady=(0, 10))
 
         except Exception as e:
             error_label = ctk.CTkLabel(
@@ -395,16 +543,21 @@ class ModernWallpaperGUI:
 
     def _update_nav_buttons(self):
         """Update navigation button styles"""
-        for btn in self.nav_buttons:
-            if btn.cget("text").strip() == self.active_view:
+        for item in self.nav_buttons:
+            btn, icon, color = item
+            btn_text = btn.cget("text")
+            # Extract view name from button text (remove icon and spaces)
+            view_name = btn_text.replace(icon, "").strip()
+
+            if view_name == self.active_view:
                 btn.configure(fg_color=self.COLORS['sidebar_hover'])
             else:
                 btn.configure(fg_color="transparent")
 
     def _on_sort_change(self, choice: str):
-        """Handle sort change"""
-        print(f"Sort changed to: {choice}")
-        # TODO: Re-sort and reload wallpapers
+        """Handle sort change and filter"""
+        # Reload the wallpapers view with the new sort/filter
+        self._navigate("Wallpapers")
 
     def _show_home_view(self):
         """Show enhanced home/dashboard view with statistics and info"""
@@ -432,7 +585,7 @@ class ModernWallpaperGUI:
         )
         subtitle.pack(pady=(0, 20), anchor="w")
 
-        # Statistics cards row
+        # Statistics cards row 1
         stats_frame = ctk.CTkFrame(scrollable, fg_color="transparent")
         stats_frame.pack(fill="x", pady=10)
 
@@ -456,6 +609,54 @@ class ModernWallpaperGUI:
         self._create_stat_card(stats_frame, 2, "Current Weather",
                               weather_text,
                               "#00b4d8")
+
+        # Statistics cards row 2
+        stats_frame2 = ctk.CTkFrame(scrollable, fg_color="transparent")
+        stats_frame2.pack(fill="x", pady=10)
+
+        # Configure grid for 3 cards
+        for i in range(3):
+            stats_frame2.grid_columnconfigure(i, weight=1)
+
+        # Banned Wallpapers Card
+        banned_count = len(self.stats_manager.get_banned_wallpapers())
+        self._create_stat_card(stats_frame2, 0, "Banned Wallpapers",
+                              f"{banned_count} banned",
+                              "#ff4444")
+
+        # Favorites Card
+        favorites_count = len(self.stats_manager.get_favorites())
+        self._create_stat_card(stats_frame2, 1, "Favorite Wallpapers",
+                              f"{favorites_count} favorites",
+                              "#ff6b81")
+
+        # Total Changes Card
+        total_changes = self.stats_manager.get_total_changes()
+        self._create_stat_card(stats_frame2, 2, "Total Changes",
+                              f"{total_changes} times",
+                              "#00e676")
+
+        # Current Wallpaper Preview Section
+        preview_label = ctk.CTkLabel(
+            scrollable,
+            text="Current Wallpapers (All Monitors)",
+            font=ctk.CTkFont(size=18, weight="bold"),
+            text_color=self.COLORS['text_light']
+        )
+        preview_label.pack(pady=(30, 15), anchor="w")
+
+        self._create_current_wallpaper_preview(scrollable)
+
+        # Statistics Chart Section
+        chart_label = ctk.CTkLabel(
+            scrollable,
+            text="Usage Statistics (Last 7 Days)",
+            font=ctk.CTkFont(size=18, weight="bold"),
+            text_color=self.COLORS['text_light']
+        )
+        chart_label.pack(pady=(30, 15), anchor="w")
+
+        self._create_statistics_chart(scrollable)
 
         # Quick Actions Section
         actions_label = ctk.CTkLabel(
@@ -564,34 +765,22 @@ class ModernWallpaperGUI:
 
     def _create_action_card(self, parent, row, col, title, description, color, command):
         """Create an action card button"""
+        # Create a frame container for the card
+        card_frame = ctk.CTkFrame(parent, fg_color="transparent")
+        card_frame.grid(row=row, column=col, padx=10, pady=10, sticky="nsew")
+
+        # Create the button with text inside
         card = ctk.CTkButton(
-            parent,
-            text="",
+            card_frame,
+            text=f"{title}\n{description}",
             fg_color=color,
             hover_color=self.COLORS['card_hover'],
             corner_radius=12,
             height=100,
+            font=ctk.CTkFont(size=14, weight="bold"),
             command=command
         )
-        card.grid(row=row, column=col, padx=10, pady=10, sticky="nsew")
-
-        # Content frame
-        content = ctk.CTkFrame(card, fg_color="transparent")
-        content.place(relx=0.5, rely=0.5, anchor="center")
-
-        ctk.CTkLabel(
-            content,
-            text=title,
-            font=ctk.CTkFont(size=15, weight="bold"),
-            text_color=self.COLORS['text_light']
-        ).pack()
-
-        ctk.CTkLabel(
-            content,
-            text=description,
-            font=ctk.CTkFont(size=11),
-            text_color=self.COLORS['text_muted']
-        ).pack(pady=(5, 0))
+        card.pack(fill="both", expand=True)
 
     def _get_service_status_text(self):
         """Get service status text"""
@@ -625,6 +814,188 @@ class ModernWallpaperGUI:
             return "N/A"
         except:
             return "N/A"
+
+    def _create_current_wallpaper_preview(self, parent):
+        """Create current wallpaper preview cards showing all monitors"""
+        # Try to get current wallpapers for all monitors
+        wallpapers = []
+        try:
+            from main import DesktopWallpaperController
+
+            controller = DesktopWallpaperController()
+            wallpapers = controller.get_all_wallpapers()
+            controller.close()
+        except Exception as e:
+            pass
+
+        # If we couldn't get any wallpapers, show message
+        if not wallpapers:
+            preview_card = ctk.CTkFrame(parent, fg_color=self.COLORS['card_bg'], corner_radius=12)
+            preview_card.pack(fill="x", pady=10)
+
+            ctk.CTkLabel(
+                preview_card,
+                text="Unable to detect current wallpapers",
+                font=ctk.CTkFont(size=14),
+                text_color=self.COLORS['text_muted']
+            ).pack(pady=30)
+            return
+
+        # Create a card for each monitor
+        for wallpaper_info in wallpapers:
+            preview_card = ctk.CTkFrame(parent, fg_color=self.COLORS['card_bg'], corner_radius=12)
+            preview_card.pack(fill="x", pady=10)
+
+            current_path = wallpaper_info.get("path")
+            monitor_idx = wallpaper_info.get("monitor_index", 0)
+            monitor_width = wallpaper_info.get("width", 0)
+            monitor_height = wallpaper_info.get("height", 0)
+
+            # Try to display the wallpaper
+            try:
+                if current_path and os.path.exists(current_path):
+                    # Create preview with image and info
+                    content_frame = ctk.CTkFrame(preview_card, fg_color="transparent")
+                    content_frame.pack(fill="both", padx=20, pady=20)
+
+                    # Left side - image preview
+                    try:
+                        img = Image.open(current_path)
+                        img.thumbnail((400, 250), Image.Resampling.LANCZOS)
+                        photo = ctk.CTkImage(light_image=img, dark_image=img, size=(400, 250))
+
+                        img_label = ctk.CTkLabel(content_frame, image=photo, text="")
+                        img_label.pack(side="left", padx=(0, 20))
+                    except:
+                        pass
+
+                    # Right side - info
+                    info_frame = ctk.CTkFrame(content_frame, fg_color="transparent")
+                    info_frame.pack(side="left", fill="both", expand=True)
+
+                    # Monitor label
+                    monitor_label = ctk.CTkLabel(
+                        info_frame,
+                        text=f"Monitor {monitor_idx + 1} ({monitor_width}x{monitor_height})",
+                        font=ctk.CTkFont(size=16, weight="bold"),
+                        text_color=self.COLORS['accent']
+                    )
+                    monitor_label.pack(anchor="w", pady=(0, 5))
+
+                    # File name
+                    filename = os.path.basename(current_path)
+                    ctk.CTkLabel(
+                        info_frame,
+                        text=filename[:40] + "..." if len(filename) > 40 else filename,
+                        font=ctk.CTkFont(size=13),
+                        text_color=self.COLORS['text_light']
+                    ).pack(anchor="w", pady=(0, 10))
+
+                    # Stats
+                    rating = self.stats_manager.get_rating(current_path)
+                    is_fav = self.stats_manager.is_favorite(current_path)
+
+                    stats_info = [
+                        ("Rating", "★" * rating + "☆" * (5 - rating) if rating > 0 else "Not rated"),
+                        ("Favorite", "Yes ♥" if is_fav else "No"),
+                        ("Views", str(self.stats_manager.data.get("wallpapers", {}).get(current_path, {}).get("views", 0)))
+                    ]
+
+                    for label, value in stats_info:
+                        row = ctk.CTkFrame(info_frame, fg_color="transparent")
+                        row.pack(fill="x", pady=3)
+
+                        ctk.CTkLabel(
+                            row,
+                            text=label + ":",
+                            font=ctk.CTkFont(size=11),
+                            text_color=self.COLORS['text_muted']
+                        ).pack(side="left")
+
+                        ctk.CTkLabel(
+                            row,
+                            text=value,
+                            font=ctk.CTkFont(size=11, weight="bold"),
+                            text_color=self.COLORS['text_light']
+                        ).pack(side="right")
+
+                else:
+                    ctk.CTkLabel(
+                        preview_card,
+                        text=f"Monitor {monitor_idx + 1}: No wallpaper set",
+                        font=ctk.CTkFont(size=14),
+                        text_color=self.COLORS['text_muted']
+                    ).pack(pady=30)
+
+            except Exception as e:
+                ctk.CTkLabel(
+                    preview_card,
+                    text=f"Monitor {monitor_idx + 1}: Unable to load wallpaper",
+                    font=ctk.CTkFont(size=14),
+                    text_color=self.COLORS['text_muted']
+                ).pack(pady=30)
+
+    def _create_statistics_chart(self, parent):
+        """Create statistics chart using matplotlib"""
+        chart_card = ctk.CTkFrame(parent, fg_color=self.COLORS['card_bg'], corner_radius=12)
+        chart_card.pack(fill="x", pady=10)
+
+        try:
+            # Get statistics data
+            daily_changes = self.stats_manager.get_daily_changes(7)
+            provider_stats = self.stats_manager.get_provider_stats(7)
+
+            # Create matplotlib figure
+            fig = Figure(figsize=(10, 4), facecolor='#3D2B3F')
+            fig.subplots_adjust(left=0.1, right=0.95, top=0.9, bottom=0.15, wspace=0.3)
+
+            # Daily changes chart
+            ax1 = fig.add_subplot(121)
+            dates = list(daily_changes.keys())[-7:]
+            values = [daily_changes[d] for d in dates]
+            dates_short = [d[-5:] for d in dates]  # Show only MM-DD
+
+            ax1.bar(dates_short, values, color='#E94560', edgecolor='#C41E3A', linewidth=2)
+            ax1.set_title('Daily Wallpaper Changes', color='white', fontsize=12, pad=10)
+            ax1.set_xlabel('Date', color='#B0B0B0', fontsize=10)
+            ax1.set_ylabel('Changes', color='#B0B0B0', fontsize=10)
+            ax1.tick_params(colors='#B0B0B0', labelsize=9)
+            ax1.set_facecolor('#3D2B3F')
+            for spine in ax1.spines.values():
+                spine.set_edgecolor('#B0B0B0')
+                spine.set_linewidth(0.5)
+            ax1.grid(True, alpha=0.2, color='#B0B0B0', linestyle='--')
+
+            # Provider distribution chart
+            if provider_stats:
+                ax2 = fig.add_subplot(122)
+                providers = list(provider_stats.keys())
+                counts = list(provider_stats.values())
+
+                colors_map = {
+                    'wallhaven': '#00e676',
+                    'pexels': '#ffd93d',
+                    'reddit': '#ff6b81',
+                    'unsplash': '#89b4fa',
+                }
+                colors = [colors_map.get(p.lower(), '#808080') for p in providers]
+
+                ax2.pie(counts, labels=providers, autopct='%1.1f%%',
+                       colors=colors, textprops={'color': 'white', 'fontsize': 10})
+                ax2.set_title('Provider Distribution', color='white', fontsize=12, pad=10)
+
+            # Embed in tkinter
+            canvas = FigureCanvasTkAgg(fig, master=chart_card)
+            canvas.draw()
+            canvas.get_tk_widget().pack(fill="both", expand=True, padx=10, pady=10)
+
+        except Exception as e:
+            ctk.CTkLabel(
+                chart_card,
+                text=f"Unable to generate chart: {str(e)[:50]}",
+                font=ctk.CTkFont(size=14),
+                text_color=self.COLORS['text_muted']
+            ).pack(pady=30)
 
     def _show_settings_view(self):
         """Show fully editable settings"""
@@ -810,24 +1181,48 @@ class ModernWallpaperGUI:
         save_btn.pack(fill="x", pady=(20, 10))
 
     def _create_section(self, parent, title):
-        """Create a settings section frame"""
-        section_frame = ctk.CTkFrame(parent, fg_color=self.COLORS['card_bg'], corner_radius=12)
-        section_frame.pack(fill="x", pady=10, padx=5)
+        """Create a settings section frame with better visual separation"""
+        # Add spacing before section
+        ctk.CTkLabel(parent, text="", height=10).pack()
+
+        # Section header with colored accent
+        header_frame = ctk.CTkFrame(parent, fg_color="transparent")
+        header_frame.pack(fill="x", pady=(10, 5), padx=5)
+
+        # Colored indicator bar
+        indicator = ctk.CTkFrame(
+            header_frame,
+            fg_color=self.COLORS['accent'],
+            width=4,
+            height=25,
+            corner_radius=2
+        )
+        indicator.pack(side="left", padx=(0, 10))
 
         section_label = ctk.CTkLabel(
-            section_frame,
+            header_frame,
             text=title,
-            font=ctk.CTkFont(size=16, weight="bold"),
-            text_color=self.COLORS['text_light']
+            font=ctk.CTkFont(size=18, weight="bold"),
+            text_color=self.COLORS['accent']
         )
-        section_label.pack(pady=15, padx=20, anchor="w")
+        section_label.pack(side="left", anchor="w")
+
+        # Section content frame with border
+        section_frame = ctk.CTkFrame(
+            parent,
+            fg_color=self.COLORS['card_bg'],
+            corner_radius=12,
+            border_width=1,
+            border_color=self.COLORS['card_hover']
+        )
+        section_frame.pack(fill="x", pady=(5, 15), padx=5)
 
         return section_frame
 
     def _add_setting_row(self, section_frame, label_text, widget_type, variable, options=None):
         """Add a setting row with label and widget"""
         row_frame = ctk.CTkFrame(section_frame, fg_color="transparent")
-        row_frame.pack(fill="x", padx=20, pady=8)
+        row_frame.pack(fill="x", padx=25, pady=10)
 
         if widget_type == "checkbox":
             # Checkbox with label inside
@@ -940,14 +1335,16 @@ class ModernWallpaperGUI:
         help_frame = ctk.CTkFrame(
             parent,
             fg_color=self.COLORS['main_bg'],
-            corner_radius=6
+            corner_radius=6,
+            border_width=1,
+            border_color=self.COLORS['card_hover']
         )
-        help_frame.pack(fill="x", padx=25, pady=(2, 12))
+        help_frame.pack(fill="x", padx=25, pady=(0, 8))
 
         help_label = ctk.CTkLabel(
             help_frame,
-            text=f"ℹ️  {text}",
-            text_color=self.COLORS['text_muted'],
+            text=f"💡 {text}",
+            text_color="#89b4fa",  # Light blue for better readability
             font=ctk.CTkFont(size=11),
             wraplength=680,
             justify="left",
@@ -1252,9 +1649,160 @@ class ModernWallpaperGUI:
         except Exception as e:
             print(f"Error requesting wallpaper change: {e}")
 
+    def _change_wallpaper_on_monitors(self, affected_monitors: List[Dict]):
+        """Change wallpaper on specific monitors"""
+        try:
+            from main import DesktopWallpaperController
+            from PIL import Image
+            from weather_overlay import WeatherOverlay, WeatherInfo
+            from weather_rotation import WeatherRotationController
+            from config import WeatherOverlaySettings, WeatherRotationSettings
+            import tempfile
+            import time
+
+            # Get banned wallpapers list
+            banned_paths = self.stats_manager.get_banned_wallpapers()
+
+            # Get weather overlay setup if enabled
+            weather_overlay = WeatherOverlay(WeatherOverlaySettings)
+            weather_info = None
+            if weather_overlay.enabled:
+                try:
+                    weather_controller = WeatherRotationController(WeatherRotationSettings, None)
+                    weather_decision = weather_controller.evaluate("gui_ban")
+                    if weather_decision:
+                        weather_info = WeatherInfo(
+                            city=WeatherRotationSettings.get("location", {}).get("city", ""),
+                            country=WeatherRotationSettings.get("location", {}).get("country", ""),
+                            condition=weather_decision.condition,
+                            temperature=weather_decision.temperature or 0.0,
+                            feels_like=weather_decision.details.get('feels_like') if weather_decision.details else None,
+                            humidity=weather_decision.details.get('humidity') if weather_decision.details else None,
+                            pressure=weather_decision.details.get('pressure') if weather_decision.details else None,
+                            wind_speed=weather_decision.details.get('wind_speed') if weather_decision.details else None,
+                            clouds=weather_decision.details.get('clouds') if weather_decision.details else None,
+                            description=weather_decision.details.get('description') if weather_decision.details else None
+                        )
+                except:
+                    pass
+
+            controller = DesktopWallpaperController()
+
+            for monitor_info in affected_monitors:
+                monitor_idx = monitor_info.get("monitor_index")
+                monitor_id = monitor_info.get("monitor_id")
+                monitor_label = f"Monitor {monitor_idx + 1}"
+
+                # Get a random wallpaper from cache, excluding banned ones
+                entry = self.cache_manager.get_random(
+                    monitor_label=monitor_label,
+                    banned_paths=banned_paths
+                ) or self.cache_manager.get_random(banned_paths=banned_paths)
+
+                if not entry:
+                    print(f"No available wallpaper for {monitor_label}")
+                    continue
+
+                wallpaper_path = entry.get("path")
+
+                # Apply weather overlay if enabled
+                if weather_overlay.enabled and weather_info:
+                    try:
+                        temp_dir = tempfile.gettempdir()
+                        timestamp = int(time.time())
+                        base_name = Path(wallpaper_path).stem
+                        temp_overlay_path = os.path.join(temp_dir, f"wallpaper_overlay_ban_{timestamp}_{base_name}.jpg")
+
+                        target_size = (monitor_info.get('width'), monitor_info.get('height'))
+                        if weather_overlay.apply_overlay(wallpaper_path, temp_overlay_path, weather_info, target_size):
+                            wallpaper_path = temp_overlay_path
+                    except:
+                        pass
+
+                # Convert to BMP if needed
+                if not wallpaper_path.lower().endswith('.bmp'):
+                    bmp_path = str(Path(wallpaper_path).with_suffix('.bmp'))
+                    img = Image.open(wallpaper_path)
+                    img.save(bmp_path, 'BMP')
+                    wallpaper_path = bmp_path
+
+                # Apply to monitor
+                controller.set_wallpaper(monitor_id, wallpaper_path)
+
+                # Log the change
+                self.stats_manager.log_wallpaper_change(
+                    entry.get("path"),
+                    provider=entry.get("provider", "unknown"),
+                    action="ban_replace"
+                )
+
+            controller.close()
+
+        except Exception as e:
+            print(f"Error changing wallpaper on monitors: {e}")
+
     def _apply_wallpaper(self, item: Dict[str, Any]):
         """Show monitor selection dialog and apply wallpaper"""
         self._show_monitor_selection_dialog(item)
+
+    def _toggle_favorite(self, wallpaper_path: str, button: ctk.CTkButton):
+        """Toggle favorite status for a wallpaper"""
+        is_fav = self.stats_manager.toggle_favorite(wallpaper_path)
+        # Update button appearance
+        button.configure(
+            text="♥" if is_fav else "♡",
+            fg_color="#ff6b81" if is_fav else "transparent"
+        )
+
+    def _toggle_ban(self, wallpaper_path: str, button: ctk.CTkButton):
+        """Toggle ban status for a wallpaper"""
+        is_banned = self.stats_manager.toggle_ban(wallpaper_path)
+        # Update button appearance
+        button.configure(
+            text="🚫" if is_banned else "⊘",
+            fg_color="#ff4444" if is_banned else "transparent"
+        )
+
+        # If banned, check if this wallpaper is currently in use on any monitor
+        if is_banned:
+            try:
+                from main import DesktopWallpaperController
+
+                controller = DesktopWallpaperController()
+                current_wallpapers = controller.get_all_wallpapers()
+                controller.close()
+
+                # Check if the banned wallpaper is currently active on any monitor
+                affected_monitors = []
+                for wp_info in current_wallpapers:
+                    if wp_info.get("path") == wallpaper_path:
+                        affected_monitors.append(wp_info)
+
+                if affected_monitors:
+                    # Change wallpaper on affected monitors
+                    self._change_wallpaper_on_monitors(affected_monitors)
+                    monitor_names = ", ".join([f"Monitor {wp['monitor_index'] + 1}" for wp in affected_monitors])
+                    self.show_toast(
+                        "Wallpaper Banned & Replaced",
+                        f"Changed wallpaper on {monitor_names}",
+                        duration=3000
+                    )
+                else:
+                    self.show_toast("Wallpaper Banned", "This wallpaper will be excluded from rotation", duration=2000)
+            except Exception as e:
+                self.show_toast("Wallpaper Banned", "This wallpaper will be excluded from rotation", duration=2000)
+        else:
+            self.show_toast("Wallpaper Unbanned", "This wallpaper is now available again", duration=2000)
+
+    def _set_rating(self, wallpaper_path: str, rating: int, star_buttons: List):
+        """Set rating for a wallpaper"""
+        self.stats_manager.set_rating(wallpaper_path, rating)
+        # Update star buttons
+        for i, btn in enumerate(star_buttons, 1):
+            if i <= rating:
+                btn.configure(text="★", text_color="#ffd700")
+            else:
+                btn.configure(text="☆", text_color=self.COLORS['text_muted'])
 
     def _show_monitor_selection_dialog(self, item: Dict[str, Any]):
         """Show dialog to choose monitor for wallpaper"""
@@ -1413,6 +1961,13 @@ class ModernWallpaperGUI:
             if monitor_selection == "All Monitors":
                 # Apply to all monitors
                 ctypes.windll.user32.SystemParametersInfoW(20, 0, wallpaper_path, 3)
+                # Show toast notification
+                self.show_toast(
+                    "Wallpaper Changed",
+                    "Applied to all monitors",
+                    original_path,
+                    duration=4000
+                )
                 self._show_success_dialog("Wallpaper applied to all monitors!")
             else:
                 # Apply to specific monitor
@@ -1429,10 +1984,24 @@ class ModernWallpaperGUI:
                 if monitor_idx < len(monitors_list):
                     manager.set_wallpaper(monitors_list[monitor_idx]["id"], wallpaper_path)
                     manager.close()
+                    # Show toast notification
+                    self.show_toast(
+                        "Wallpaper Changed",
+                        f"Applied to {monitor_selection}",
+                        original_path,
+                        duration=4000
+                    )
                     self._show_success_dialog(f"Wallpaper applied to {monitor_selection}!")
                 else:
                     manager.close()
                     self._show_error_dialog("Invalid monitor selection")
+
+            # Log wallpaper change to statistics
+            self.stats_manager.log_wallpaper_change(
+                original_path,
+                provider=item.get("provider", "unknown"),
+                action="manual"
+            )
 
         except Exception as e:
             self._show_error_dialog(f"Failed to apply wallpaper: {e}")
@@ -1489,6 +2058,107 @@ class ModernWallpaperGUI:
         """Handle window closing"""
         # Don't stop the service - let it run in background
         self.root.destroy()
+
+    def show_toast(self, title: str, message: str, image_path: Optional[str] = None, duration: int = 3000):
+        """Show a toast notification"""
+        # Create toast window
+        toast = ctk.CTkToplevel(self.root)
+        toast.withdraw()  # Hide initially
+
+        # Configure toast
+        toast.overrideredirect(True)  # Remove window decorations
+        toast.attributes('-topmost', True)  # Always on top
+
+        # Position in bottom right corner
+        screen_width = toast.winfo_screenwidth()
+        screen_height = toast.winfo_screenheight()
+        toast_width = 350
+        toast_height = 120 if not image_path else 180
+
+        x = screen_width - toast_width - 20
+        y = screen_height - toast_height - 60  # Account for taskbar
+
+        toast.geometry(f"{toast_width}x{toast_height}+{x}+{y}")
+
+        # Toast content
+        toast_frame = ctk.CTkFrame(
+            toast,
+            fg_color=self.COLORS['card_bg'],
+            border_color=self.COLORS['accent'],
+            border_width=2,
+            corner_radius=12
+        )
+        toast_frame.pack(fill="both", expand=True, padx=5, pady=5)
+
+        # If image provided, show thumbnail
+        if image_path and os.path.exists(image_path):
+            try:
+                img = Image.open(image_path)
+                img.thumbnail((80, 80), Image.Resampling.LANCZOS)
+                photo = ctk.CTkImage(light_image=img, dark_image=img, size=(80, 80))
+
+                img_label = ctk.CTkLabel(toast_frame, image=photo, text="")
+                img_label.pack(side="left", padx=10, pady=10)
+                # Keep reference to prevent garbage collection
+                toast_frame.image = photo
+            except:
+                pass
+
+        # Text content
+        text_frame = ctk.CTkFrame(toast_frame, fg_color="transparent")
+        text_frame.pack(side="left", fill="both", expand=True, padx=10, pady=10)
+
+        ctk.CTkLabel(
+            text_frame,
+            text=title,
+            font=ctk.CTkFont(size=14, weight="bold"),
+            text_color=self.COLORS['text_light']
+        ).pack(anchor="w")
+
+        ctk.CTkLabel(
+            text_frame,
+            text=message,
+            font=ctk.CTkFont(size=11),
+            text_color=self.COLORS['text_muted'],
+            wraplength=200
+        ).pack(anchor="w", pady=(5, 0))
+
+        # Show toast
+        toast.deiconify()
+        self.toast_windows.append(toast)
+
+        # Fade in animation
+        toast.attributes('-alpha', 0.0)
+
+        def fade_in(alpha=0.0):
+            if alpha < 1.0:
+                alpha += 0.1
+                toast.attributes('-alpha', alpha)
+                toast.after(30, lambda: fade_in(alpha))
+
+        fade_in()
+
+        # Auto close after duration
+        def close_toast():
+            def fade_out(alpha=1.0):
+                if alpha > 0.0:
+                    alpha -= 0.1
+                    try:
+                        toast.attributes('-alpha', alpha)
+                        toast.after(30, lambda: fade_out(alpha))
+                    except:
+                        pass
+                else:
+                    try:
+                        toast.destroy()
+                        if toast in self.toast_windows:
+                            self.toast_windows.remove(toast)
+                    except:
+                        pass
+
+            fade_out()
+
+        toast.after(duration, close_toast)
 
     def run(self):
         """Start the GUI"""

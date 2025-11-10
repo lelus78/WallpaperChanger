@@ -50,3 +50,10 @@ test_*.py
 # Development/experimental files
 weather_rotation.py
 playlist_manager.py
+
+# Generated data files
+current_wallpaper_info.json
+wallpaper_stats.json
+
+# Gemini generated files
+.genkit/

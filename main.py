@@ -361,6 +361,7 @@ class WallpaperApp:
         self.app_dir = os.path.dirname(os.path.abspath(__file__))
         self.log_path = os.path.join(self.app_dir, "wallpaperchanger.log")
         self.signal_path = os.path.join(self.app_dir, "wallpaperchanger.signal")
+        self.current_wallpaper_info_path = os.path.join(self.app_dir, "current_wallpaper_info.json")
         self.provider_state_path = os.path.join(self.app_dir, PROVIDER_STATE_FILE)
 
         logging.basicConfig(
@@ -753,6 +754,19 @@ class WallpaperApp:
                 json.dump(state, handle, indent=2)
         except OSError as error:
             self.logger.debug(f"Unable to persist provider state: {error}")
+
+    def _write_current_wallpaper_info(self, wallpaper_path: str, metadata: Dict) -> None:
+        """Writes the path and metadata of the current wallpaper to a file."""
+        try:
+            info = {
+                "path": wallpaper_path,
+                "timestamp": datetime.utcnow().isoformat(),
+                "metadata": metadata,
+            }
+            with open(self.current_wallpaper_info_path, "w", encoding="utf-8") as f:
+                json.dump(info, f)
+        except Exception as e:
+            self.logger.error(f"Error writing current wallpaper info: {e}")
 
     def change_wallpaper(
         self,
@@ -1178,6 +1192,11 @@ class WallpaperApp:
         download_path = os.path.join(os.path.expanduser("~"), DOWNLOAD_TEMPLATE.format(index=index))
         self._download_wallpaper(url, download_path)
         cached_path = self.cache_manager.store(download_path, metadata) or download_path
+        
+        # For now, let's just write the info for the first monitor
+        if index == 0:
+            self._write_current_wallpaper_info(cached_path, metadata)
+
         if cached_path != download_path:
             with suppress(OSError):
                 os.remove(download_path)
@@ -1191,6 +1210,9 @@ class WallpaperApp:
         download_path = os.path.join(os.path.expanduser("~"), SINGLE_DOWNLOAD_NAME)
         self._download_wallpaper(url, download_path)
         cached_path = self.cache_manager.store(download_path, metadata) or download_path
+        
+        self._write_current_wallpaper_info(cached_path, metadata)
+
         if cached_path != download_path:
             with suppress(OSError):
                 os.remove(download_path)

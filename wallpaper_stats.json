@@ -1,12 +1,264 @@
 {
-  "wallpapers": {},
-  "history": [],
-  "daily_stats": {},
+  "wallpapers": {
+    "auto_startup": {
+      "views": 6,
+      "last_viewed": "2025-11-10T14:02:03.080206",
+      "rating": 0,
+      "favorite": false,
+      "tags": [],
+      "provider": "wallhaven"
+    },
+    "auto_hotkey": {
+      "views": 14,
+      "last_viewed": "2025-11-10T15:29:02.082358",
+      "rating": 0,
+      "favorite": false,
+      "tags": [],
+      "provider": "pexels"
+    },
+    "auto_scheduler": {
+      "views": 10,
+      "last_viewed": "2025-11-10T14:58:09.059778",
+      "rating": 0,
+      "favorite": false,
+      "tags": [],
+      "provider": "reddit"
+    },
+    "auto_gui": {
+      "views": 2,
+      "last_viewed": "2025-11-10T14:02:38.525582",
+      "rating": 0,
+      "favorite": false,
+      "tags": [],
+      "provider": "reddit"
+    },
+    "C:\\Users\\EmanueleO\\WallpaperChangerCache\\1762779758252_6400.jpg": {
+      "views": 1,
+      "last_viewed": "2025-11-10T15:16:05.473871",
+      "rating": 0,
+      "favorite": false,
+      "tags": [],
+      "provider": "reddit"
+    }
+  },
+  "history": [
+    {
+      "timestamp": "2025-11-10T12:40:45.587757",
+      "path": "auto_startup",
+      "provider": "wallhaven",
+      "action": "startup"
+    },
+    {
+      "timestamp": "2025-11-10T12:40:45.589703",
+      "path": "auto_startup",
+      "provider": "wallhaven",
+      "action": "startup"
+    },
+    {
+      "timestamp": "2025-11-10T12:41:13.213520",
+      "path": "auto_hotkey",
+      "provider": "pexels",
+      "action": "hotkey"
+    },
+    {
+      "timestamp": "2025-11-10T12:41:13.215466",
+      "path": "auto_hotkey",
+      "provider": "pexels",
+      "action": "hotkey"
+    },
+    {
+      "timestamp": "2025-11-10T12:41:56.645104",
+      "path": "auto_scheduler",
+      "provider": "reddit",
+      "action": "scheduler"
+    },
+    {
+      "timestamp": "2025-11-10T12:41:56.647051",
+      "path": "auto_scheduler",
+      "provider": "reddit",
+      "action": "scheduler"
+    },
+    {
+      "timestamp": "2025-11-10T12:42:59.330219",
+      "path": "auto_hotkey",
+      "provider": "pexels",
+      "action": "hotkey"
+    },
+    {
+      "timestamp": "2025-11-10T12:42:59.332165",
+      "path": "auto_hotkey",
+      "provider": "pexels",
+      "action": "hotkey"
+    },
+    {
+      "timestamp": "2025-11-10T12:44:42.258778",
+      "path": "auto_hotkey",
+      "provider": "pexels",
+      "action": "hotkey"
+    },
+    {
+      "timestamp": "2025-11-10T12:44:42.260723",
+      "path": "auto_hotkey",
+      "provider": "pexels",
+      "action": "hotkey"
+    },
+    {
+      "timestamp": "2025-11-10T12:45:00.425420",
+      "path": "auto_hotkey",
+      "provider": "reddit",
+      "action": "hotkey"
+    },
+    {
+      "timestamp": "2025-11-10T12:45:00.427369",
+      "path": "auto_hotkey",
+      "provider": "reddit",
+      "action": "hotkey"
+    },
+    {
+      "timestamp": "2025-11-10T13:05:41.718437",
+      "path": "auto_startup",
+      "provider": "wallhaven",
+      "action": "startup"
+    },
+    {
+      "timestamp": "2025-11-10T13:05:41.721357",
+      "path": "auto_startup",
+      "provider": "wallhaven",
+      "action": "startup"
+    },
+    {
+      "timestamp": "2025-11-10T13:06:46.434225",
+      "path": "auto_scheduler",
+      "provider": "pexels",
+      "action": "scheduler"
+    },
+    {
+      "timestamp": "2025-11-10T13:06:46.437145",
+      "path": "auto_scheduler",
+      "provider": "pexels",
+      "action": "scheduler"
+    },
+    {
+      "timestamp": "2025-11-10T13:28:38.974878",
+      "path": "auto_hotkey",
+      "provider": "reddit",
+      "action": "hotkey"
+    },
+    {
+      "timestamp": "2025-11-10T13:28:38.976824",
+      "path": "auto_hotkey",
+      "provider": "reddit",
+      "action": "hotkey"
+    },
+    {
+      "timestamp": "2025-11-10T13:57:51.444618",
+      "path": "auto_scheduler",
+      "provider": "pexels",
+      "action": "scheduler"
+    },
+    {
+      "timestamp": "2025-11-10T13:57:51.446564",
+      "path": "auto_scheduler",
+      "provider": "pexels",
+      "action": "scheduler"
+    },
+    {
+      "timestamp": "2025-11-10T14:02:03.077286",
+      "path": "auto_startup",
+      "provider": "pexels",
+      "action": "startup"
+    },
+    {
+      "timestamp": "2025-11-10T14:02:03.080206",
+      "path": "auto_startup",
+      "provider": "pexels",
+      "action": "startup"
+    },
+    {
+      "timestamp": "2025-11-10T14:02:38.523636",
+      "path": "auto_gui",
+      "provider": "reddit",
+      "action": "gui"
+    },
+    {
+      "timestamp": "2025-11-10T14:02:38.525582",
+      "path": "auto_gui",
+      "provider": "reddit",
+      "action": "gui"
+    },
+    {
+      "timestamp": "2025-11-10T14:03:06.020186",
+      "path": "auto_scheduler",
+      "provider": "wallhaven",
+      "action": "scheduler"
+    },
+    {
+      "timestamp": "2025-11-10T14:03:06.022133",
+      "path": "auto_scheduler",
+      "provider": "wallhaven",
+      "action": "scheduler"
+    },
+    {
+      "timestamp": "2025-11-10T14:58:09.057830",
+      "path": "auto_scheduler",
+      "provider": "pexels",
+      "action": "scheduler"
+    },
+    {
+      "timestamp": "2025-11-10T14:58:09.059778",
+      "path": "auto_scheduler",
+      "provider": "pexels",
+      "action": "scheduler"
+    },
+    {
+      "timestamp": "2025-11-10T15:10:35.425619",
+      "path": "auto_hotkey",
+      "provider": "reddit",
+      "action": "hotkey"
+    },
+    {
+      "timestamp": "2025-11-10T15:10:35.428539",
+      "path": "auto_hotkey",
+      "provider": "reddit",
+      "action": "hotkey"
+    },
+    {
+      "timestamp": "2025-11-10T15:16:05.473871",
+      "path": "C:\\Users\\EmanueleO\\WallpaperChangerCache\\1762779758252_6400.jpg",
+      "provider": "reddit",
+      "action": "manual"
+    },
+    {
+      "timestamp": "2025-11-10T15:29:02.080410",
+      "path": "auto_hotkey",
+      "provider": "pexels",
+      "action": "hotkey"
+    },
+    {
+      "timestamp": "2025-11-10T15:29:02.082358",
+      "path": "auto_hotkey",
+      "provider": "pexels",
+      "action": "hotkey"
+    }
+  ],
+  "daily_stats": {
+    "2025-11-10": {
+      "changes": 33,
+      "providers": {
+        "wallhaven": 6,
+        "pexels": 16,
+        "reddit": 11
+      }
+    }
+  },
   "banned": [
-    "C:\\Users\\EmanueleO\\WallpaperChangerCache\\1762440338377_6185.jpg"
+    "C:\\Users\\EmanueleO\\WallpaperChangerCache\\1762440338377_6185.jpg",
+    "C:\\Users\\EmanueleO\\WallpaperChangerCache\\1762766348167_5270.jpg",
+    "C:\\Users\\EmanueleO\\WallpaperChangerCache\\1762773811450_8398.jpg",
+    "C:\\Users\\EmanueleO\\WallpaperChangerCache\\1762445749722_5997.jpg"
   ],
   "preferences": {
-    "total_changes": 0,
+    "total_changes": 33,
     "favorite_provider": null,
     "favorite_time": null
   }

@@ -75,6 +75,9 @@ class ModernWallpaperGUI:
         # Current wallpaper tracking
         self.current_wallpaper = None
 
+        # View caching for performance
+        self._view_cache = {}
+
         # Main app process
         self.main_process = None
         self.pid_file = Path(__file__).parent / "wallpaperchanger.pid"
@@ -214,9 +217,20 @@ class ModernWallpaperGUI:
 
     def _show_wallpapers_view(self):
         """Show wallpapers gallery view"""
+        # Create container for this view
+        view_container = ctk.CTkFrame(self.content_container, fg_color="transparent")
+        view_container.pack(fill="both", expand=True)
+
+        # Cache the view
+        self._view_cache["Wallpapers"] = view_container
+
+        # Configure grid
+        view_container.grid_rowconfigure(1, weight=1)
+        view_container.grid_columnconfigure(0, weight=1)
+
         # Header with controls
         header = ctk.CTkFrame(
-            self.content_container,
+            view_container,
             height=80,
             corner_radius=0,
             fg_color="transparent"
@@ -244,7 +258,10 @@ class ModernWallpaperGUI:
             font=ctk.CTkFont(size=13)
         ).pack(side="left", padx=(0, 10))
 
-        self.sort_var = ctk.StringVar(value="Newest First")
+        # Create or reuse sort_var to preserve selection
+        if not hasattr(self, 'sort_var') or not self.sort_var:
+            self.sort_var = ctk.StringVar(value="Newest First")
+
         sort_menu = ctk.CTkOptionMenu(
             filter_frame,
             variable=self.sort_var,
@@ -255,29 +272,98 @@ class ModernWallpaperGUI:
             button_hover_color=self.COLORS['sidebar_hover'],
             command=self._on_sort_change
         )
-        sort_menu.pack(side="left")
+        sort_menu.pack(side="left", padx=(0, 10))
+
+        # Refresh button to reload grid with current window size
+        refresh_btn = ctk.CTkButton(
+            filter_frame,
+            text="🔄",
+            font=ctk.CTkFont(size=16),
+            width=35,
+            height=28,
+            fg_color=self.COLORS['card_bg'],
+            hover_color=self.COLORS['accent'],
+            corner_radius=8,
+            command=self._load_wallpaper_grid
+        )
+        refresh_btn.pack(side="left")
 
         # Scrollable frame for wallpaper grid with faster scrolling
-        scrollable_frame = ctk.CTkScrollableFrame(
-            self.content_container,
+        self.wallpapers_scrollable_frame = ctk.CTkScrollableFrame(
+            view_container,
             corner_radius=0,
             fg_color="transparent",
             scrollbar_button_color=self.COLORS['accent'],
             scrollbar_button_hover_color=self.COLORS['sidebar_hover']
         )
-        scrollable_frame.grid(row=1, column=0, sticky="nsew", padx=20, pady=20)
+        self.wallpapers_scrollable_frame.grid(row=1, column=0, sticky="nsew", padx=20, pady=20)
 
         # Increase scroll speed significantly - bind to the frame itself, not globally
         def fast_scroll(event):
             try:
-                scrollable_frame._parent_canvas.yview_scroll(int(-3*(event.delta/120)), "units")
+                self.wallpapers_scrollable_frame._parent_canvas.yview_scroll(int(-3*(event.delta/120)), "units")
             except:
                 pass  # Ignore if canvas doesn't exist
 
-        scrollable_frame.bind("<MouseWheel>", fast_scroll)
+        self.wallpapers_scrollable_frame.bind("<MouseWheel>", fast_scroll)
 
-        # Configure grid for wallpaper cards (3 columns, fixed width to prevent stretching)
-        for i in range(3):
+        # Setup smart resize handler for wallpapers view only
+        self._setup_wallpaper_resize_handler()
+
+        # Load wallpapers into the scrollable frame
+        self._load_wallpaper_grid()
+
+    def _setup_wallpaper_resize_handler(self):
+        """Setup resize handler that only works when on Wallpapers page"""
+        if not hasattr(self, '_last_window_width'):
+            self._last_window_width = 0
+        if not hasattr(self, '_resize_timer'):
+            self._resize_timer = None
+
+        def check_resize():
+            """Check if window width changed significantly"""
+            try:
+                current_width = self.root.winfo_width()
+                # Only reload if width changed by more than 360px (one card width)
+                if abs(current_width - self._last_window_width) > 360:
+                    # Check if we're still on wallpapers view
+                    if hasattr(self, 'wallpapers_scrollable_frame') and self.wallpapers_scrollable_frame.winfo_exists():
+                        self._last_window_width = current_width
+                        self._load_wallpaper_grid()
+            except:
+                pass
+            # Schedule next check in 1 second
+            if hasattr(self, 'wallpapers_scrollable_frame') and self.wallpapers_scrollable_frame.winfo_exists():
+                self._resize_timer = self.root.after(1000, check_resize)
+
+        # Start checking
+        self._last_window_width = self.root.winfo_width()
+        self._resize_timer = self.root.after(1000, check_resize)
+
+    def _load_wallpaper_grid(self):
+        """Load wallpapers into the grid with current filter/sort settings"""
+        if not hasattr(self, 'wallpapers_scrollable_frame'):
+            return
+
+        scrollable_frame = self.wallpapers_scrollable_frame
+
+        # Clear existing widgets
+        for widget in scrollable_frame.winfo_children():
+            widget.destroy()
+
+        # Calculate number of columns based on window width
+        # Each card is ~360px wide, so we can fit multiple columns in wider windows
+        try:
+            window_width = self.root.winfo_width()
+            card_width = 360
+            # Account for padding and scrollbar
+            available_width = window_width - 100
+            num_columns = max(3, min(6, available_width // card_width))  # Between 3 and 6 columns
+        except:
+            num_columns = 3  # Fallback to 3 columns
+
+        # Configure grid columns dynamically
+        for i in range(num_columns):
             scrollable_frame.grid_columnconfigure(i, weight=0, minsize=360)
 
         # Load wallpapers from cache
@@ -337,14 +423,89 @@ class ModernWallpaperGUI:
                 font=ctk.CTkFont(size=16),
                 text_color=self.COLORS['text_muted']
             )
-            no_items_label.grid(row=0, column=0, columnspan=3, pady=100)
+            no_items_label.grid(row=0, column=0, columnspan=num_columns, pady=100)
             return
 
-        # Create cards in grid (3 columns)
-        for idx, item in enumerate(items[:30]):  # Show up to 30 wallpapers
-            row = idx // 3
-            col = idx % 3
+        # Calculate optimal number of items to show based on columns
+        # Show 3-4 rows worth of cards for better performance
+        items_to_show = min(len(items), num_columns * 4)
+
+        # Create cards in grid with dynamic columns
+        for idx, item in enumerate(items[:items_to_show]):
+            row = idx // num_columns
+            col = idx % num_columns
             self._create_wallpaper_card(item, row, col, scrollable_frame)
+
+        # Show "Load More" button if there are more items
+        if len(items) > items_to_show:
+            remaining = len(items) - items_to_show
+            load_more_frame = ctk.CTkFrame(scrollable_frame, fg_color="transparent")
+            load_more_frame.grid(row=(items_to_show // num_columns) + 1, column=0, columnspan=num_columns, pady=20)
+
+            ctk.CTkLabel(
+                load_more_frame,
+                text=f"{remaining} more wallpapers available",
+                font=ctk.CTkFont(size=12),
+                text_color=self.COLORS['text_muted']
+            ).pack(pady=(0, 10))
+
+            ctk.CTkButton(
+                load_more_frame,
+                text="Load More",
+                font=ctk.CTkFont(size=13, weight="bold"),
+                fg_color=self.COLORS['accent'],
+                hover_color=self.COLORS['sidebar_hover'],
+                corner_radius=10,
+                height=35,
+                width=150,
+                command=lambda: self._load_more_wallpapers(items, items_to_show, num_columns, scrollable_frame)
+            ).pack()
+
+    def _load_more_wallpapers(self, items: list, current_count: int, num_columns: int, parent):
+        """Load more wallpapers when Load More button is clicked"""
+        # Remove the load more button
+        for widget in parent.winfo_children():
+            if isinstance(widget, ctk.CTkFrame) and widget.cget("fg_color") == "transparent":
+                # Check if it's the load more frame (last one)
+                children = widget.winfo_children()
+                if len(children) == 2:  # Label + Button
+                    widget.destroy()
+                    break
+
+        # Load next batch
+        next_batch = min(len(items), current_count + num_columns * 4)
+
+        # Add new cards
+        for idx in range(current_count, next_batch):
+            item = items[idx]
+            row = idx // num_columns
+            col = idx % num_columns
+            self._create_wallpaper_card(item, row, col, parent)
+
+        # Show load more button again if there are still more items
+        if next_batch < len(items):
+            remaining = len(items) - next_batch
+            load_more_frame = ctk.CTkFrame(parent, fg_color="transparent")
+            load_more_frame.grid(row=(next_batch // num_columns) + 1, column=0, columnspan=num_columns, pady=20)
+
+            ctk.CTkLabel(
+                load_more_frame,
+                text=f"{remaining} more wallpapers available",
+                font=ctk.CTkFont(size=12),
+                text_color=self.COLORS['text_muted']
+            ).pack(pady=(0, 10))
+
+            ctk.CTkButton(
+                load_more_frame,
+                text="Load More",
+                font=ctk.CTkFont(size=13, weight="bold"),
+                fg_color=self.COLORS['accent'],
+                hover_color=self.COLORS['sidebar_hover'],
+                corner_radius=10,
+                height=35,
+                width=150,
+                command=lambda: self._load_more_wallpapers(items, next_batch, num_columns, parent)
+            ).pack()
 
     def _create_wallpaper_card(self, item: Dict[str, Any], row: int, col: int, parent):
         """Create a modern wallpaper card with rounded corners and hover effects"""
@@ -523,23 +684,50 @@ class ModernWallpaperGUI:
             error_label.pack(expand=True, pady=50)
 
     def _navigate(self, view: str):
-        """Handle navigation"""
+        """Handle navigation with view caching for performance"""
         self.active_view = view
         self._update_nav_buttons()
 
-        # Clear current content
-        for widget in self.content_container.winfo_children():
-            widget.destroy()
+        # Initialize cache if doesn't exist
+        if not hasattr(self, '_view_cache'):
+            self._view_cache = {}
 
-        # Show appropriate view
-        if view == "Home":
-            self._show_home_view()
-        elif view == "Wallpapers":
-            self._show_wallpapers_view()
-        elif view == "Settings":
-            self._show_settings_view()
-        elif view == "Logs":
-            self._show_logs_view()
+        # Hide all cached views
+        for cached_view in self._view_cache.values():
+            cached_view.pack_forget()
+
+        # Show or create the requested view
+        if view in self._view_cache:
+            # Reuse cached view - just show it
+            self._view_cache[view].pack(fill="both", expand=True)
+
+            # Refresh Home view data when navigating to it
+            if view == "Home":
+                self._refresh_home_data()
+        else:
+            # Create new view and cache it
+            if view == "Home":
+                self._show_home_view()
+            elif view == "Wallpapers":
+                self._show_wallpapers_view()
+            elif view == "Settings":
+                self._show_settings_view()
+            elif view == "Logs":
+                self._show_logs_view()
+
+    def _refresh_home_data(self):
+        """Refresh Home view wallpapers without recreating entire view"""
+        # Reload statistics from file
+        self.stats_manager.data = self.stats_manager._load_data()
+
+        # Only refresh wallpaper previews if container exists
+        if hasattr(self, 'wallpaper_preview_container') and self.wallpaper_preview_container.winfo_exists():
+            # Clear old previews
+            for widget in self.wallpaper_preview_container.winfo_children():
+                widget.destroy()
+
+            # Reload just the wallpaper previews
+            self._create_current_wallpaper_preview_fast(self.wallpaper_preview_container)
 
     def _update_nav_buttons(self):
         """Update navigation button styles"""
@@ -556,30 +744,57 @@ class ModernWallpaperGUI:
 
     def _on_sort_change(self, choice: str):
         """Handle sort change and filter"""
-        # Reload the wallpapers view with the new sort/filter
-        self._navigate("Wallpapers")
+        # Reload only the wallpaper grid with the new sort/filter
+        self._load_wallpaper_grid()
 
     def _show_home_view(self):
         """Show enhanced home/dashboard view with statistics and info"""
+        # Reload statistics from file to get latest data
+        self.stats_manager.data = self.stats_manager._load_data()
+
+        # Create container for this view
+        view_container = ctk.CTkFrame(self.content_container, fg_color="transparent")
+        view_container.pack(fill="both", expand=True)
+
+        # Cache the view
+        self._view_cache["Home"] = view_container
+
         # Main scrollable container
         scrollable = ctk.CTkScrollableFrame(
-            self.content_container,
+            view_container,
             fg_color="transparent"
         )
         scrollable.pack(fill="both", expand=True, padx=20, pady=20)
 
-        # Welcome header
+        # Welcome header with refresh button
+        header_frame = ctk.CTkFrame(scrollable, fg_color="transparent")
+        header_frame.pack(fill="x", pady=(10, 5))
+
         title = ctk.CTkLabel(
-            scrollable,
+            header_frame,
             text="Dashboard",
             font=ctk.CTkFont(size=28, weight="bold"),
             text_color=self.COLORS['text_light']
         )
-        title.pack(pady=(10, 5), anchor="w")
+        title.pack(side="left", anchor="w")
+
+        # Refresh button
+        refresh_btn = ctk.CTkButton(
+            header_frame,
+            text="🔄 Refresh",
+            font=ctk.CTkFont(size=13),
+            width=100,
+            height=32,
+            fg_color=self.COLORS['accent'],
+            hover_color=self.COLORS['sidebar_hover'],
+            corner_radius=8,
+            command=self._refresh_home_data
+        )
+        refresh_btn.pack(side="right", padx=10)
 
         subtitle = ctk.CTkLabel(
             scrollable,
-            text="Overview of your wallpaper system",
+            text="Overview of your wallpaper system (updates automatically when you return to Home)",
             font=ctk.CTkFont(size=14),
             text_color=self.COLORS['text_muted']
         )
@@ -645,18 +860,50 @@ class ModernWallpaperGUI:
         )
         preview_label.pack(pady=(30, 15), anchor="w")
 
-        self._create_current_wallpaper_preview(scrollable)
+        # Container for wallpaper previews (so we can refresh it later)
+        self.wallpaper_preview_container = ctk.CTkFrame(scrollable, fg_color="transparent")
+        self.wallpaper_preview_container.pack(fill="x", pady=10)
 
-        # Statistics Chart Section
+        # Load wallpapers directly (optimized)
+        self._create_current_wallpaper_preview_fast(self.wallpaper_preview_container)
+
+        # Statistics Chart Section - Optional Load
+        chart_card = ctk.CTkFrame(scrollable, fg_color=self.COLORS['card_bg'], corner_radius=12)
+        chart_card.pack(fill="x", pady=(30, 10))
+
+        chart_inner = ctk.CTkFrame(chart_card, fg_color="transparent")
+        chart_inner.pack(fill="x", padx=20, pady=20)
+
         chart_label = ctk.CTkLabel(
-            scrollable,
-            text="Usage Statistics (Last 7 Days)",
+            chart_inner,
+            text="Usage Statistics",
             font=ctk.CTkFont(size=18, weight="bold"),
             text_color=self.COLORS['text_light']
         )
-        chart_label.pack(pady=(30, 15), anchor="w")
+        chart_label.pack(anchor="w", pady=(0, 10))
 
-        self._create_statistics_chart(scrollable)
+        info_label = ctk.CTkLabel(
+            chart_inner,
+            text="Click below to view detailed charts and analytics",
+            font=ctk.CTkFont(size=13),
+            text_color=self.COLORS['text_muted']
+        )
+        info_label.pack(anchor="w", pady=(0, 15))
+
+        # Show "View Statistics" button
+        self.stats_chart_container = ctk.CTkFrame(chart_inner, fg_color="transparent")
+        self.stats_chart_container.pack(fill="x")
+
+        load_stats_btn = ctk.CTkButton(
+            self.stats_chart_container,
+            text="📊 View Detailed Statistics",
+            font=ctk.CTkFont(size=14, weight="bold"),
+            height=36,
+            fg_color=self.COLORS['accent'],
+            hover_color=self.COLORS['sidebar_hover'],
+            command=lambda: self._load_statistics_chart_lazy()
+        )
+        load_stats_btn.pack()
 
         # Quick Actions Section
         actions_label = ctk.CTkLabel(
@@ -815,6 +1062,138 @@ class ModernWallpaperGUI:
         except:
             return "N/A"
 
+    def _create_current_wallpaper_preview_fast(self, parent):
+        """Create wallpaper preview with optimizations - no view tracking on load"""
+        # Try to get current wallpapers for all monitors
+        wallpapers = []
+        try:
+            from main import DesktopWallpaperController
+            controller = DesktopWallpaperController()
+            wallpapers = controller.get_all_wallpapers()
+            controller.close()
+        except Exception:
+            pass
+
+        # If we couldn't get any wallpapers, show message
+        if not wallpapers:
+            preview_card = ctk.CTkFrame(parent, fg_color=self.COLORS['card_bg'], corner_radius=12)
+            preview_card.pack(fill="x", pady=10)
+            ctk.CTkLabel(
+                preview_card,
+                text="Unable to detect current wallpapers",
+                font=ctk.CTkFont(size=14),
+                text_color=self.COLORS['text_muted']
+            ).pack(pady=30)
+            return
+
+        # Create a card for each monitor (without view tracking to speed up)
+        for wallpaper_info in wallpapers:
+            preview_card = ctk.CTkFrame(parent, fg_color=self.COLORS['card_bg'], corner_radius=12)
+            preview_card.pack(fill="x", pady=10)
+
+            current_path = wallpaper_info.get("path")
+            monitor_idx = wallpaper_info.get("monitor_index", 0)
+            monitor_width = wallpaper_info.get("width", 0)
+            monitor_height = wallpaper_info.get("height", 0)
+
+            # Try to display the wallpaper
+            try:
+                if current_path and os.path.exists(current_path):
+                    # Create preview with image and info
+                    content_frame = ctk.CTkFrame(preview_card, fg_color="transparent")
+                    content_frame.pack(fill="both", padx=20, pady=20)
+
+                    # Left side - image preview (smaller thumbnail for speed)
+                    image_frame = ctk.CTkFrame(content_frame, fg_color=self.COLORS['main_bg'], corner_radius=8)
+                    image_frame.pack(side="left", padx=(0, 20))
+
+                    # Use cached thumbnail or create smaller one
+                    self._create_image_preview_fast(image_frame, current_path, size=(200, 120))
+
+                    # Right side - info
+                    info_frame = ctk.CTkFrame(content_frame, fg_color="transparent")
+                    info_frame.pack(side="left", fill="both", expand=True)
+
+                    # Monitor label
+                    monitor_label = ctk.CTkLabel(
+                        info_frame,
+                        text=f"Monitor {monitor_idx + 1} ({monitor_width}x{monitor_height})",
+                        font=ctk.CTkFont(size=16, weight="bold"),
+                        text_color=self.COLORS['text_light']
+                    )
+                    monitor_label.pack(anchor="w", pady=(0, 10))
+
+                    # File name
+                    file_name = os.path.basename(current_path)
+                    name_label = ctk.CTkLabel(
+                        info_frame,
+                        text=f"📄 {file_name[:50]}{'...' if len(file_name) > 50 else ''}",
+                        font=ctk.CTkFont(size=13),
+                        text_color=self.COLORS['text_muted'],
+                        anchor="w"
+                    )
+                    name_label.pack(anchor="w", pady=2)
+
+                    # Quick action buttons
+                    btn_frame = ctk.CTkFrame(info_frame, fg_color="transparent")
+                    btn_frame.pack(anchor="w", pady=(10, 0))
+
+                    # Change button
+                    change_btn = ctk.CTkButton(
+                        btn_frame,
+                        text="Change",
+                        width=80,
+                        height=28,
+                        fg_color=self.COLORS['accent'],
+                        hover_color=self.COLORS['sidebar_hover'],
+                        command=self._change_wallpaper_now
+                    )
+                    change_btn.pack(side="left", padx=(0, 10))
+
+            except Exception:
+                # Error displaying wallpaper
+                error_label = ctk.CTkLabel(
+                    preview_card,
+                    text=f"Error displaying wallpaper for Monitor {monitor_idx + 1}",
+                    font=ctk.CTkFont(size=14),
+                    text_color=self.COLORS['text_muted']
+                )
+                error_label.pack(pady=30)
+
+    def _create_image_preview_fast(self, parent, image_path, size=(200, 120)):
+        """Create fast image preview with aggressive caching"""
+        try:
+            # Check cache first
+            cache_key = f"{image_path}_{size[0]}x{size[1]}"
+            if cache_key in self.thumbnail_cache:
+                img_label = ctk.CTkLabel(parent, image=self.thumbnail_cache[cache_key], text="")
+                img_label.pack(padx=10, pady=10)
+                return
+
+            # Load and resize quickly
+            from PIL import Image
+            img = Image.open(image_path)
+
+            # Use FASTEST resampling for speed
+            img.thumbnail(size, Image.NEAREST)  # Fastest method
+
+            photo = ctk.CTkImage(light_image=img, dark_image=img, size=size)
+
+            # Cache it
+            self.thumbnail_cache[cache_key] = photo
+
+            img_label = ctk.CTkLabel(parent, image=photo, text="")
+            img_label.pack(padx=10, pady=10)
+        except Exception:
+            # Show error placeholder
+            error_label = ctk.CTkLabel(
+                parent,
+                text="Error\nloading",
+                font=ctk.CTkFont(size=12),
+                text_color=self.COLORS['text_muted']
+            )
+            error_label.pack(expand=True, pady=50)
+
     def _create_current_wallpaper_preview(self, parent):
         """Create current wallpaper preview cards showing all monitors"""
         # Try to get current wallpapers for all monitors
@@ -840,6 +1219,42 @@ class ModernWallpaperGUI:
                 text_color=self.COLORS['text_muted']
             ).pack(pady=30)
             return
+
+        # Track viewed wallpapers in this session to avoid double counting
+        if not hasattr(self, '_viewed_wallpapers_session'):
+            self._viewed_wallpapers_session = set()
+
+        # Create a card for each monitor
+        for wallpaper_info in wallpapers:
+            current_path = wallpaper_info.get("path")
+
+            # Increment view count if this is the first time seeing this wallpaper in this session
+            if current_path and current_path not in self._viewed_wallpapers_session:
+                # Only increment views for wallpapers that are actually tracked (in cache)
+                if current_path in [item.get("path") for item in self.cache_manager.list_entries()]:
+                    # Get current views
+                    current_views = self.stats_manager.data.get("wallpapers", {}).get(current_path, {}).get("views", 0)
+
+                    # Log as a view (this will increment the view count)
+                    if current_path in self.stats_manager.data.get("wallpapers", {}):
+                        self.stats_manager.data["wallpapers"][current_path]["views"] = current_views + 1
+                    else:
+                        # Create entry if doesn't exist
+                        from datetime import datetime
+                        self.stats_manager.data.setdefault("wallpapers", {})[current_path] = {
+                            "views": 1,
+                            "last_viewed": datetime.now().isoformat(),
+                            "rating": 0,
+                            "favorite": False,
+                            "tags": [],
+                            "provider": "unknown"
+                        }
+
+                    # Save the updated stats
+                    self.stats_manager._save_data()
+
+                    # Mark as viewed in this session
+                    self._viewed_wallpapers_session.add(current_path)
 
         # Create a card for each monitor
         for wallpaper_info in wallpapers:
@@ -935,28 +1350,89 @@ class ModernWallpaperGUI:
                     text_color=self.COLORS['text_muted']
                 ).pack(pady=30)
 
+    def _load_statistics_chart_lazy(self):
+        """Load statistics chart on demand (lazy loading)"""
+        # Clear the container (remove button)
+        for widget in self.stats_chart_container.winfo_children():
+            widget.destroy()
+
+        # Show loading message
+        loading_label = ctk.CTkLabel(
+            self.stats_chart_container,
+            text="Loading statistics...",
+            font=ctk.CTkFont(size=14),
+            text_color=self.COLORS['text_muted']
+        )
+        loading_label.pack(pady=20)
+
+        # Force UI update
+        self.root.update()
+
+        # Load the chart
+        self._create_statistics_chart(self.stats_chart_container)
+
+        # Remove loading message
+        loading_label.destroy()
+
     def _create_statistics_chart(self, parent):
-        """Create statistics chart using matplotlib"""
+        """Create statistics charts using matplotlib"""
         chart_card = ctk.CTkFrame(parent, fg_color=self.COLORS['card_bg'], corner_radius=12)
         chart_card.pack(fill="x", pady=10)
 
         try:
+            from datetime import datetime, timedelta
+
             # Get statistics data
-            daily_changes = self.stats_manager.get_daily_changes(7)
-            provider_stats = self.stats_manager.get_provider_stats(7)
+            daily_changes = self.stats_manager.get_daily_changes(14)  # 2 weeks
+            provider_stats = self.stats_manager.get_provider_stats(14)
+            hourly_dist = self.stats_manager.get_hourly_distribution()
 
-            # Create matplotlib figure
-            fig = Figure(figsize=(10, 4), facecolor='#3D2B3F')
-            fig.subplots_adjust(left=0.1, right=0.95, top=0.9, bottom=0.15, wspace=0.3)
+            # Check if we have any data at all
+            total_changes = sum(daily_changes.values())
+            if total_changes == 0 and not provider_stats and not hourly_dist:
+                # No data available - show helpful message
+                ctk.CTkLabel(
+                    chart_card,
+                    text="📊 No statistics available yet!\n\n"
+                         "Start using the wallpaper changer to see:\n"
+                         "• Daily activity trends\n"
+                         "• Provider distribution\n"
+                         "• Hourly usage patterns\n"
+                         "• Most viewed wallpapers\n\n"
+                         "Use the hotkey (ctrl+alt+w) or Quick Actions to change wallpapers!",
+                    font=ctk.CTkFont(size=14),
+                    text_color=self.COLORS['text_light'],
+                    justify="center"
+                ).pack(pady=50)
+                return
 
-            # Daily changes chart
-            ax1 = fig.add_subplot(121)
-            dates = list(daily_changes.keys())[-7:]
-            values = [daily_changes[d] for d in dates]
-            dates_short = [d[-5:] for d in dates]  # Show only MM-DD
+            # Create matplotlib figure with 3 subplots in a grid
+            fig = Figure(figsize=(14, 9), facecolor='#3D2B3F')
+            fig.subplots_adjust(left=0.08, right=0.95, top=0.95, bottom=0.08, wspace=0.3, hspace=0.5)
 
-            ax1.bar(dates_short, values, color='#E94560', edgecolor='#C41E3A', linewidth=2)
-            ax1.set_title('Daily Wallpaper Changes', color='white', fontsize=12, pad=10)
+            # Use GridSpec for better control
+            import matplotlib.gridspec as gridspec
+            gs = gridspec.GridSpec(3, 2, figure=fig, height_ratios=[1, 1, 1])
+
+            # 1. Daily changes chart (top left)
+            ax1 = fig.add_subplot(gs[0, 0])
+
+            # Sort dates chronologically
+            sorted_dates = sorted(daily_changes.keys())
+            values = [daily_changes[d] for d in sorted_dates]
+            # Format dates nicely
+            dates_display = []
+            for d in sorted_dates:
+                try:
+                    dt = datetime.strptime(d, "%Y-%m-%d")
+                    dates_display.append(dt.strftime("%m/%d"))
+                except:
+                    dates_display.append(d[-5:])
+
+            ax1.plot(dates_display, values, color='#E94560', marker='o', linewidth=2,
+                    markersize=6, markerfacecolor='#FFD93D', markeredgecolor='#E94560', markeredgewidth=2)
+            ax1.fill_between(range(len(values)), values, alpha=0.3, color='#E94560')
+            ax1.set_title('Daily Wallpaper Changes (Last 14 Days)', color='white', fontsize=13, pad=10, weight='bold')
             ax1.set_xlabel('Date', color='#B0B0B0', fontsize=10)
             ax1.set_ylabel('Changes', color='#B0B0B0', fontsize=10)
             ax1.tick_params(colors='#B0B0B0', labelsize=9)
@@ -964,11 +1440,13 @@ class ModernWallpaperGUI:
             for spine in ax1.spines.values():
                 spine.set_edgecolor('#B0B0B0')
                 spine.set_linewidth(0.5)
-            ax1.grid(True, alpha=0.2, color='#B0B0B0', linestyle='--')
+            ax1.grid(True, alpha=0.2, color='#B0B0B0', linestyle='--', axis='y')
+            # Rotate x-axis labels for better readability
+            ax1.tick_params(axis='x', rotation=45)
 
-            # Provider distribution chart
+            # 2. Provider distribution chart (top right)
             if provider_stats:
-                ax2 = fig.add_subplot(122)
+                ax2 = fig.add_subplot(gs[0, 1])
                 providers = list(provider_stats.keys())
                 counts = list(provider_stats.values())
 
@@ -980,9 +1458,97 @@ class ModernWallpaperGUI:
                 }
                 colors = [colors_map.get(p.lower(), '#808080') for p in providers]
 
-                ax2.pie(counts, labels=providers, autopct='%1.1f%%',
-                       colors=colors, textprops={'color': 'white', 'fontsize': 10})
-                ax2.set_title('Provider Distribution', color='white', fontsize=12, pad=10)
+                # Add percentage labels and improve pie chart
+                wedges, texts, autotexts = ax2.pie(counts, labels=providers, autopct='%1.1f%%',
+                       colors=colors, textprops={'color': 'white', 'fontsize': 10},
+                       startangle=90, explode=[0.05]*len(providers))
+
+                # Make percentage text bold
+                for autotext in autotexts:
+                    autotext.set_color('black')
+                    autotext.set_weight('bold')
+                    autotext.set_fontsize(9)
+
+                ax2.set_title('Provider Distribution (Last 14 Days)', color='white', fontsize=13, pad=10, weight='bold')
+
+            # 3. Hourly distribution chart (middle row, spans 2 columns)
+            if hourly_dist:
+                ax3 = fig.add_subplot(gs[1, :])
+
+                # Ensure all hours 0-23 are present
+                hours = list(range(24))
+                hourly_counts = [hourly_dist.get(h, 0) for h in hours]
+
+                # Create bar chart with gradient effect
+                bars = ax3.bar(hours, hourly_counts, color='#89b4fa', edgecolor='#5b8fd4', linewidth=1.5)
+
+                # Color bars based on value (gradient)
+                max_val = max(hourly_counts) if hourly_counts else 1
+                for i, (bar, count) in enumerate(zip(bars, hourly_counts)):
+                    if max_val > 0:
+                        intensity = count / max_val
+                        alpha = 0.4 + intensity * 0.6
+                        # Use different colors for different times of day (RGB normalized to 0-1, with alpha)
+                        if 6 <= i < 12:  # Morning
+                            bar.set_color((255/255, 217/255, 61/255, alpha))  # Yellow
+                        elif 12 <= i < 18:  # Afternoon
+                            bar.set_color((233/255, 69/255, 96/255, alpha))  # Red
+                        elif 18 <= i < 22:  # Evening
+                            bar.set_color((137/255, 180/255, 250/255, alpha))  # Blue
+                        else:  # Night
+                            bar.set_color((176/255, 176/255, 176/255, alpha))  # Gray
+
+                ax3.set_title('Hourly Activity Distribution', color='white', fontsize=13, pad=10, weight='bold')
+                ax3.set_xlabel('Hour of Day', color='#B0B0B0', fontsize=10)
+                ax3.set_ylabel('Wallpaper Changes', color='#B0B0B0', fontsize=10)
+                ax3.set_xticks(hours)
+                ax3.set_xticklabels([f'{h:02d}:00' for h in hours], rotation=45, ha='right')
+                ax3.tick_params(colors='#B0B0B0', labelsize=8)
+                ax3.set_facecolor('#3D2B3F')
+                for spine in ax3.spines.values():
+                    spine.set_edgecolor('#B0B0B0')
+                    spine.set_linewidth(0.5)
+                ax3.grid(True, alpha=0.2, color='#B0B0B0', linestyle='--', axis='y')
+
+            # 4. Top 10 Most Viewed Wallpapers (bottom row, spans 2 columns)
+            top_viewed = self.stats_manager.get_most_viewed(10)
+            if top_viewed:
+                ax4 = fig.add_subplot(gs[2, :])
+
+                # Get wallpaper names (just filename without path)
+                import os
+                names = []
+                views = []
+                for path, view_count in top_viewed:
+                    filename = os.path.basename(path)
+                    # Truncate long filenames
+                    if len(filename) > 30:
+                        filename = filename[:27] + "..."
+                    names.append(filename)
+                    views.append(view_count)
+
+                # Create horizontal bar chart
+                y_pos = list(range(len(names)))
+                bars = ax4.barh(y_pos, views, color='#00e676', edgecolor='#00a854', linewidth=1.5)
+
+                # Add gradient effect
+                max_views = max(views) if views else 1
+                for i, (bar, view_count) in enumerate(zip(bars, views)):
+                    intensity = view_count / max_views
+                    alpha = 0.5 + intensity * 0.5
+                    bar.set_color((0/255, 230/255, 118/255, alpha))  # Green with varying alpha
+
+                ax4.set_yticks(y_pos)
+                ax4.set_yticklabels(names)
+                ax4.invert_yaxis()  # Labels read top-to-bottom
+                ax4.set_xlabel('Views', color='#B0B0B0', fontsize=10)
+                ax4.set_title('Top 10 Most Viewed Wallpapers', color='white', fontsize=13, pad=10, weight='bold')
+                ax4.tick_params(colors='#B0B0B0', labelsize=9)
+                ax4.set_facecolor('#3D2B3F')
+                for spine in ax4.spines.values():
+                    spine.set_edgecolor('#B0B0B0')
+                    spine.set_linewidth(0.5)
+                ax4.grid(True, alpha=0.2, color='#B0B0B0', linestyle='--', axis='x')
 
             # Embed in tkinter
             canvas = FigureCanvasTkAgg(fig, master=chart_card)
@@ -990,17 +1556,27 @@ class ModernWallpaperGUI:
             canvas.get_tk_widget().pack(fill="both", expand=True, padx=10, pady=10)
 
         except Exception as e:
+            import traceback
+            error_text = f"Unable to generate charts: {str(e)}"
+            print(f"Chart error: {traceback.format_exc()}")
             ctk.CTkLabel(
                 chart_card,
-                text=f"Unable to generate chart: {str(e)[:50]}",
+                text=error_text[:80],
                 font=ctk.CTkFont(size=14),
                 text_color=self.COLORS['text_muted']
             ).pack(pady=30)
 
     def _show_settings_view(self):
         """Show fully editable settings"""
+        # Create container for this view
+        view_container = ctk.CTkFrame(self.content_container, fg_color="transparent")
+        view_container.pack(fill="both", expand=True)
+
+        # Cache the view
+        self._view_cache["Settings"] = view_container
+
         scrollable = ctk.CTkScrollableFrame(
-            self.content_container,
+            view_container,
             fg_color="transparent"
         )
         scrollable.pack(fill="both", expand=True, padx=20, pady=20)
@@ -1522,8 +2098,15 @@ class ModernWallpaperGUI:
 
     def _show_logs_view(self):
         """Show logs view"""
+        # Create container for this view
+        view_container = ctk.CTkFrame(self.content_container, fg_color="transparent")
+        view_container.pack(fill="both", expand=True)
+
+        # Cache the view
+        self._view_cache["Logs"] = view_container
+
         title = ctk.CTkLabel(
-            self.content_container,
+            view_container,
             text="Application Logs",
             font=ctk.CTkFont(size=24, weight="bold"),
             text_color=self.COLORS['text_light']
@@ -1531,7 +2114,7 @@ class ModernWallpaperGUI:
         title.pack(pady=(20, 10), padx=20, anchor="w")
 
         # Buttons frame
-        btn_frame = ctk.CTkFrame(self.content_container, fg_color="transparent")
+        btn_frame = ctk.CTkFrame(view_container, fg_color="transparent")
         btn_frame.pack(fill="x", padx=20, pady=(0, 10))
 
         refresh_btn = ctk.CTkButton(
@@ -1559,7 +2142,7 @@ class ModernWallpaperGUI:
         clear_btn.pack(side="left")
 
         # Log text area
-        log_frame = ctk.CTkFrame(self.content_container, fg_color=self.COLORS['card_bg'], corner_radius=12)
+        log_frame = ctk.CTkFrame(view_container, fg_color=self.COLORS['card_bg'], corner_radius=12)
         log_frame.pack(fill="both", expand=True, padx=20, pady=(0, 20))
 
         self.log_textbox = ctk.CTkTextbox(

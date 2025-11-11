@@ -574,9 +574,13 @@ class ModernWallpaperGUI:
                 image=photo,
                 text="",
                 width=320,
-                height=200
+                height=200,
+                cursor="hand2"
             )
             img_label.pack(padx=10, pady=10, fill="both", expand=False)
+
+            # Make image clickable to view fullscreen
+            img_label.bind("<Button-1>", lambda e, path=image_path: self._show_fullscreen_viewer(path))
 
             info_frame = ctk.CTkFrame(card, fg_color="transparent")
             info_frame.pack(fill="x", padx=15, pady=(0, 5))
@@ -2479,6 +2483,171 @@ class ModernWallpaperGUI:
                         pass
             fade_out()
         toast.after(duration, close_toast)
+
+    def _show_fullscreen_viewer(self, image_path: str):
+        """Show wallpaper in fullscreen viewer"""
+        if not os.path.exists(image_path):
+            self._show_toast("Error: Image file not found", error=True)
+            return
+
+        # Create fullscreen window
+        viewer = ctk.CTkToplevel(self.root)
+        viewer.title("Wallpaper Viewer")
+        viewer.attributes("-fullscreen", True)
+        viewer.configure(fg_color="#000000")
+
+        # Load image
+        try:
+            img = Image.open(image_path)
+
+            # Get screen dimensions
+            screen_width = viewer.winfo_screenwidth()
+            screen_height = viewer.winfo_screenheight()
+
+            # Calculate scaling to fit screen while maintaining aspect ratio
+            img_ratio = img.width / img.height
+            screen_ratio = screen_width / screen_height
+
+            if img_ratio > screen_ratio:
+                # Image is wider than screen
+                new_width = screen_width
+                new_height = int(screen_width / img_ratio)
+            else:
+                # Image is taller than screen
+                new_height = screen_height
+                new_width = int(screen_height * img_ratio)
+
+            # Create CTkImage with appropriate size
+            photo = ctk.CTkImage(light_image=img, dark_image=img, size=(new_width, new_height))
+
+            # Create container frame
+            container = ctk.CTkFrame(viewer, fg_color="#000000")
+            container.pack(fill="both", expand=True)
+
+            # Display image centered
+            img_label = ctk.CTkLabel(
+                container,
+                image=photo,
+                text=""
+            )
+            img_label.place(relx=0.5, rely=0.5, anchor="center")
+
+            # Keep reference to prevent garbage collection
+            viewer._image_ref = photo
+
+            # Info overlay at top
+            info_bar = ctk.CTkFrame(viewer, fg_color="#1a1a1a", height=60)
+            info_bar.pack(side="top", fill="x")
+
+            filename = os.path.basename(image_path)
+            file_label = ctk.CTkLabel(
+                info_bar,
+                text=filename,
+                font=ctk.CTkFont(size=16, weight="bold"),
+                text_color="#ffffff"
+            )
+            file_label.pack(side="left", padx=20, pady=10)
+
+            resolution_label = ctk.CTkLabel(
+                info_bar,
+                text=f"{img.width}x{img.height}",
+                font=ctk.CTkFont(size=14),
+                text_color="#888888"
+            )
+            resolution_label.pack(side="left", padx=10, pady=10)
+
+            # Get and display tags
+            tags = self.stats_manager.get_tags(image_path)
+            if tags:
+                tags_text = ", ".join(tags[:5])
+                tags_label = ctk.CTkLabel(
+                    info_bar,
+                    text=f"🏷️ {tags_text}",
+                    font=ctk.CTkFont(size=12),
+                    text_color="#888888"
+                )
+                tags_label.pack(side="left", padx=10, pady=10)
+
+            # Close button
+            close_btn = ctk.CTkButton(
+                info_bar,
+                text="✕ Close",
+                font=ctk.CTkFont(size=14, weight="bold"),
+                width=100,
+                height=35,
+                fg_color=self.COLORS['accent'],
+                hover_color=self.COLORS['sidebar_hover'],
+                command=viewer.destroy
+            )
+            close_btn.pack(side="right", padx=20, pady=10)
+
+            # Action buttons at bottom
+            action_bar = ctk.CTkFrame(viewer, fg_color="#1a1a1a", height=70)
+            action_bar.pack(side="bottom", fill="x")
+
+            # Set as wallpaper button
+            set_wallpaper_btn = ctk.CTkButton(
+                action_bar,
+                text="SET AS WALLPAPER",
+                font=ctk.CTkFont(size=14, weight="bold"),
+                width=200,
+                height=40,
+                fg_color=self.COLORS['accent'],
+                hover_color=self.COLORS['sidebar_hover'],
+                command=lambda: [self._apply_wallpaper({"path": image_path}), self._show_toast("Wallpaper applied!")]
+            )
+            set_wallpaper_btn.pack(side="left", padx=20, pady=15)
+
+            # Rating
+            rating_frame = ctk.CTkFrame(action_bar, fg_color="transparent")
+            rating_frame.pack(side="left", padx=20, pady=15)
+
+            ctk.CTkLabel(
+                rating_frame,
+                text="Rating:",
+                font=ctk.CTkFont(size=12),
+                text_color="#888888"
+            ).pack(side="left", padx=(0, 10))
+
+            current_rating = self.stats_manager.get_rating(image_path)
+            for i in range(1, 6):
+                star_text = "★" if i <= current_rating else "☆"
+                star_btn = ctk.CTkButton(
+                    rating_frame,
+                    text=star_text,
+                    font=ctk.CTkFont(size=18),
+                    width=35,
+                    height=35,
+                    fg_color="transparent",
+                    hover_color="#333333",
+                    text_color="#ffd700" if i <= current_rating else "#555555",
+                    command=lambda r=i, p=image_path: [self._set_rating(p, r, None), self._show_toast(f"Rated {r} stars")]
+                )
+                star_btn.pack(side="left", padx=2)
+
+            # Favorite button
+            is_fav = self.stats_manager.is_favorite(image_path)
+            fav_btn = ctk.CTkButton(
+                action_bar,
+                text="♥ Favorite" if is_fav else "♡ Add to Favorites",
+                font=ctk.CTkFont(size=14, weight="bold"),
+                width=180,
+                height=40,
+                fg_color="#ff6b81" if is_fav else "#333333",
+                hover_color="#ff4757",
+                command=lambda: [self._toggle_favorite(image_path, None), viewer.destroy(), self._show_toast("Added to favorites!" if not is_fav else "Removed from favorites")]
+            )
+            fav_btn.pack(side="left", padx=10, pady=15)
+
+            # Close on Escape or click
+            viewer.bind("<Escape>", lambda e: viewer.destroy())
+            viewer.bind("<Button-1>", lambda e: viewer.destroy() if e.widget == viewer or e.widget == container else None)
+
+            viewer.focus()
+
+        except Exception as e:
+            viewer.destroy()
+            self._show_toast(f"Error loading image: {str(e)}", error=True)
 
     def run(self):
         """Start the GUI"""

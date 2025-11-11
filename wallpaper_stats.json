@@ -8,14 +8,6 @@
       "tags": [],
       "provider": "reddit"
     },
-    "auto_hotkey": {
-      "views": 10,
-      "last_viewed": "2025-11-11T09:07:19.849199",
-      "rating": 0,
-      "favorite": false,
-      "tags": [],
-      "provider": "pexels"
-    },
     "C:\\Users\\EmanueleO\\WallpaperChangerCache\\1762847157207_2396.jpg": {
       "views": 0,
       "last_viewed": "2025-11-11T09:06:39.872926",
@@ -23,14 +15,6 @@
       "favorite": false,
       "tags": [],
       "provider": "unknown"
-    },
-    "auto_scheduler": {
-      "views": 2,
-      "last_viewed": "2025-11-11T09:06:53.913630",
-      "rating": 0,
-      "favorite": false,
-      "tags": [],
-      "provider": "pexels"
     },
     "C:\\Users\\EmanueleO\\wallpaper_monitor_0.bmp": {
       "views": 3,
@@ -99,6 +83,26 @@
         "landscape"
       ],
       "provider": "pexels"
+    },
+    "C:\\Users\\EmanueleO\\WallpaperChangerCache\\1762850101630_9527.jpg": {
+      "views": 1,
+      "last_viewed": "2025-11-11T09:35:05.231173",
+      "rating": 0,
+      "favorite": false,
+      "tags": [
+        "r/wallpapers"
+      ],
+      "provider": "reddit"
+    },
+    "C:\\Users\\EmanueleO\\WallpaperChangerCache\\1762850104822_5032.jpg": {
+      "views": 1,
+      "last_viewed": "2025-11-11T09:35:05.233110",
+      "rating": 0,
+      "favorite": false,
+      "tags": [
+        "r/EarthPorn"
+      ],
+      "provider": "reddit"
     }
   },
   "history": [
@@ -107,78 +111,6 @@
       "path": "C:\\Users\\EmanueleO\\WallpaperChangerCache\\1762779758252_6400.jpg",
       "provider": "reddit",
       "action": "manual"
-    },
-    {
-      "timestamp": "2025-11-11T09:05:15.719209",
-      "path": "auto_hotkey",
-      "provider": "pexels",
-      "action": "hotkey"
-    },
-    {
-      "timestamp": "2025-11-11T09:05:15.723102",
-      "path": "auto_hotkey",
-      "provider": "pexels",
-      "action": "hotkey"
-    },
-    {
-      "timestamp": "2025-11-11T09:05:39.022148",
-      "path": "auto_hotkey",
-      "provider": "pexels",
-      "action": "hotkey"
-    },
-    {
-      "timestamp": "2025-11-11T09:05:39.024103",
-      "path": "auto_hotkey",
-      "provider": "pexels",
-      "action": "hotkey"
-    },
-    {
-      "timestamp": "2025-11-11T09:06:17.744743",
-      "path": "auto_hotkey",
-      "provider": "reddit",
-      "action": "hotkey"
-    },
-    {
-      "timestamp": "2025-11-11T09:06:17.747662",
-      "path": "auto_hotkey",
-      "provider": "reddit",
-      "action": "hotkey"
-    },
-    {
-      "timestamp": "2025-11-11T09:06:51.709410",
-      "path": "auto_hotkey",
-      "provider": "pexels",
-      "action": "hotkey"
-    },
-    {
-      "timestamp": "2025-11-11T09:06:51.711959",
-      "path": "auto_hotkey",
-      "provider": "pexels",
-      "action": "hotkey"
-    },
-    {
-      "timestamp": "2025-11-11T09:06:53.911639",
-      "path": "auto_scheduler",
-      "provider": "pexels",
-      "action": "scheduler"
-    },
-    {
-      "timestamp": "2025-11-11T09:06:53.913630",
-      "path": "auto_scheduler",
-      "provider": "pexels",
-      "action": "scheduler"
-    },
-    {
-      "timestamp": "2025-11-11T09:07:19.847301",
-      "path": "auto_hotkey",
-      "provider": "reddit",
-      "action": "hotkey"
-    },
-    {
-      "timestamp": "2025-11-11T09:07:19.849199",
-      "path": "auto_hotkey",
-      "provider": "reddit",
-      "action": "hotkey"
     },
     {
       "timestamp": "2025-11-11T09:25:32.232848",
@@ -239,6 +171,18 @@
       "path": "C:\\Users\\EmanueleO\\WallpaperChangerCache\\1762849732766_5444.jpg",
       "provider": "pexels",
       "action": "scheduler"
+    },
+    {
+      "timestamp": "2025-11-11T09:35:05.231173",
+      "path": "C:\\Users\\EmanueleO\\WallpaperChangerCache\\1762850101630_9527.jpg",
+      "provider": "reddit",
+      "action": "hotkey"
+    },
+    {
+      "timestamp": "2025-11-11T09:35:05.233110",
+      "path": "C:\\Users\\EmanueleO\\WallpaperChangerCache\\1762850104822_5032.jpg",
+      "provider": "reddit",
+      "action": "hotkey"
     }
   ],
   "daily_stats": {
@@ -251,9 +195,9 @@
       }
     },
     "2025-11-11": {
-      "changes": 42,
+      "changes": 44,
       "providers": {
-        "reddit": 14,
+        "reddit": 16,
         "wallhaven": 4,
         "pexels": 24
       }
@@ -266,7 +210,7 @@
     "C:\\Users\\EmanueleO\\WallpaperChangerCache\\1762445749722_5997.jpg"
   ],
   "preferences": {
-    "total_changes": 121,
+    "total_changes": 123,
     "favorite_provider": null,
     "favorite_time": null
   }

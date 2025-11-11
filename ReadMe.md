@@ -1,38 +1,63 @@
-# Wallpaper Changer
+# 🖼️ Wallpaper Changer
 
-The **Wallpaper Changer** is a Python program that automatically refreshes your desktop wallpaper using random images from configurable providers (Wallhaven, Pexels, or Reddit). It now bundles a Windows tray companion, scheduling, caching, presets, and one-click launchers so you can tailor wallpaper rotation to your workflow.
+A modern, feature-rich wallpaper manager for Windows that automatically downloads and applies beautiful wallpapers from multiple sources (Wallhaven, Pexels, Reddit).
 
-## Features
+## ✨ Key Features
 
-- **GUI Configuration Tool** with Settings tab and Wallpaper Gallery to easily configure the app and manage cached wallpapers.
-- System tray companion with quick actions (change now, rotate presets, toggle scheduler, play next cached wallpaper, open settings GUI, exit).
-- Configurable presets with include/exclude keywords, colour cues, aspect-ratio filters, and provider-specific options (sorting/toplist on Wallhaven, orientation on Pexels, subreddit/sort/score filters on Reddit).
-- Flexible scheduler with interval, jitter, day filters, and quiet hours to avoid changes while you work or sleep.
-- Local cache with metadata and offline rotation, letting you replay favourite wallpapers even without a connection.
-- **Wallpaper Gallery** in the GUI to browse cached wallpapers and apply them to specific monitors with one click.
-- One-click launcher scripts (`launchers/start_wallpaper_changer.vbs`, `launchers/stop_wallpaper_changer.vbs`, `launchers/start_config_gui.vbs`) to start or stop the app without opening a console.
-- Provider rotation and per-monitor overrides (provider, preset, resolution) including automatic panorama fallback when the Windows per-monitor API is unavailable.
-- Global hotkey (default `ctrl+alt+w`) to trigger an instant refresh.
-- Automatic BMP conversion so Windows reliably applies the wallpaper across multiple monitors.
+### Modern GUI
+- **Beautiful Interface** - Clean, dark-themed modern UI built with CustomTkinter
+- **Wallpaper Gallery** - Browse, filter, and preview all cached wallpapers
+- **Fullscreen Viewer** - Click any wallpaper to view in full resolution
+- **Tag System** - Auto-extracted tags from providers for easy filtering
+- **Statistics Dashboard** - Track usage, favorites, and view distribution charts
+- **Rating & Favorites** - 5-star rating system and favorites management
 
-## Installation
+### Smart Wallpaper Management
+- **Multi-Monitor Support** - Different wallpapers for each monitor
+- **Auto-Download** - Fresh wallpapers from Wallhaven, Reddit, and Pexels
+- **Smart Caching** - Local storage with offline rotation capability
+- **Weather Overlays** - Display current temperature on wallpapers
+- **Playlists** - Create themed collections for different moods/times
+- **Scheduled Changes** - Automatic rotation with configurable intervals
 
-1. Install Python (3.10 or newer recommended). Download it from [python.org](https://www.python.org/downloads/).
-2. Install dependencies inside your terminal from the project directory:
+### Easy to Use
+- **One-Click Installation** - Simple installer for non-technical users
+- **Desktop Shortcuts** - Quick access from desktop or Start Menu
+- **Global Hotkey** - `Ctrl+Alt+W` to change wallpaper instantly
+- **System Tray Integration** - Quick actions from notification area
 
+## 🚀 Quick Start (For Everyone)
+
+### Easy Installation
+1. **Install Python** from [python.org](https://www.python.org/downloads/)
+   - ⚠️ **Important:** Check "Add Python to PATH" during installation
+2. **Double-click `INSTALL.bat`** in this folder
+3. **Wait** for installation to complete (~1-2 minutes)
+4. **Done!** Find "Wallpaper Changer" on your desktop
+
+### Alternative: Quick Start Without Installing
+- Just double-click **`START.bat`** to launch the GUI
+
+👉 **For detailed instructions, see [README_USER.md](README_USER.md)**
+
+## 📖 For Developers
+
+### Manual Installation
+1. Install Python (3.10 or newer recommended)
+2. Install dependencies:
    ```bash
-   pip install requests pillow keyboard pystray python-dotenv
+   pip install requests pillow customtkinter matplotlib keyboard pystray python-dotenv
    ```
 
-3. Configure API keys:
+3. Configure API keys (optional):
    - Copy `.env.example` to `.env` and add your API keys
-   - **Wallhaven** – visit the [Wallhaven API settings](https://wallhaven.cc/help/api) page and generate a key.
-   - **Pexels** – create an account and request a key at [pexels.com/api/new](https://www.pexels.com/api/new/).
-   - **Reddit** - no API key is required, but set a descriptive `user_agent` (ideally referencing your Reddit username) to avoid rate limits.
+   - **Wallhaven** – [Get API key](https://wallhaven.cc/help/api)
+   - **Pexels** – [Get API key](https://www.pexels.com/api/new/)
+   - **Reddit** - No key required
 
 4. Customize settings:
-   - **Easy way**: Launch the GUI (`launchers/start_config_gui.vbs` or `python gui_config.py`)
-   - **Manual way**: Edit `config.py` to adjust presets/scheduler/cache and per-monitor overrides.
+   - **GUI**: Run `python gui_config.py`
+   - **Manual**: Edit `config.py`
 
 ## Configuration Highlights (`config.py`)
 

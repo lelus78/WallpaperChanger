@@ -63,8 +63,13 @@ class ModernWallpaperGUI:
         # Thumbnail cache
         self.thumbnail_cache = {}
 
+        # Image references to prevent garbage collection
+        self.image_references = []
+
         # Statistics manager
         self.stats_manager = StatisticsManager()
+        # Clean up placeholder paths from previous versions
+        self.stats_manager.cleanup_placeholder_paths()
 
         # Toast notifications
         self.toast_windows = []
@@ -575,6 +580,23 @@ class ModernWallpaperGUI:
             )
             provider_badge.pack(side="left")
 
+            # Display tags from statistics (if available)
+            tags = self.stats_manager.get_tags(image_path)
+            if tags:
+                # Show only first 2 tags to save space
+                tags_to_show = tags[:2]
+                tags_text = ", ".join(tags_to_show)
+                if len(tags) > 2:
+                    tags_text += f" +{len(tags) - 2}"
+
+                tags_label = ctk.CTkLabel(
+                    info_frame,
+                    text=f"🏷️ {tags_text}",
+                    font=ctk.CTkFont(size=9),
+                    text_color=self.COLORS['text_muted'],
+                )
+                tags_label.pack(side="left", padx=(8, 0))
+
             is_banned = self.stats_manager.is_banned(image_path)
             ban_btn = ctk.CTkButton(
                 info_frame,
@@ -678,10 +700,12 @@ class ModernWallpaperGUI:
     def _refresh_home_data(self):
         """Refresh Home view wallpapers without recreating entire view"""
         self.stats_manager.data = self.stats_manager._load_data()
+        # Clear image references to allow new images to load
+        self.image_references.clear()
         if hasattr(self, 'wallpaper_preview_container') and self.wallpaper_preview_container.winfo_exists():
             for widget in self.wallpaper_preview_container.winfo_children():
                 widget.destroy()
-            self._create_current_wallpaper_preview_fast(self.wallpaper_preview_container)
+            self._create_current_wallpaper_preview(self.wallpaper_preview_container)
 
     def _update_nav_buttons(self):
         """Update navigation button styles"""
@@ -1145,6 +1169,8 @@ class ModernWallpaperGUI:
                         img = Image.open(current_path)
                         img.thumbnail((400, 250), Image.Resampling.LANCZOS)
                         photo = ctk.CTkImage(light_image=img, dark_image=img, size=(400, 250))
+                        # Keep reference to prevent garbage collection
+                        self.image_references.append(photo)
                         img_label = ctk.CTkLabel(content_frame, image=photo, text="")
                         img_label.pack(side="left", padx=(0, 20))
                     except:
@@ -1168,6 +1194,19 @@ class ModernWallpaperGUI:
                         font=ctk.CTkFont(size=13),
                         text_color=self.COLORS['text_light']
                     ).pack(anchor="w", pady=(0, 10))
+
+                    # Display tags if available
+                    tags = self.stats_manager.get_tags(current_path)
+                    if tags:
+                        tags_text = ", ".join(tags[:5])  # Show up to 5 tags
+                        if len(tags) > 5:
+                            tags_text += f" +{len(tags) - 5} more"
+                        ctk.CTkLabel(
+                            info_frame,
+                            text=f"🏷️ {tags_text}",
+                            font=ctk.CTkFont(size=11),
+                            text_color=self.COLORS['text_muted']
+                        ).pack(anchor="w", pady=(0, 10))
 
                     rating = self.stats_manager.get_rating(current_path)
                     is_fav = self.stats_manager.is_favorite(current_path)
@@ -1324,36 +1363,42 @@ class ModernWallpaperGUI:
                     spine.set_linewidth(0.5)
                 ax3.grid(True, alpha=0.2, color='#B0B0B0', linestyle='--', axis='y')
 
-            top_viewed = self.stats_manager.get_most_viewed(10)
-            if top_viewed:
+            # Tag distribution chart
+            tag_stats = self.stats_manager.get_tag_stats(10)
+            if tag_stats:
                 ax4 = fig.add_subplot(gs[2, :])
-                import os
-                names = []
-                views = []
-                for path, view_count in top_viewed:
-                    filename = os.path.basename(path)
-                    if len(filename) > 30:
-                        filename = filename[:27] + "..."
-                    names.append(filename)
-                    views.append(view_count)
-                y_pos = list(range(len(names)))
-                bars = ax4.barh(y_pos, views, color='#00e676', edgecolor='#00a854', linewidth=1.5)
-                max_views = max(views) if views else 1
-                for i, (bar, view_count) in enumerate(zip(bars, views)):
-                    intensity = view_count / max_views
+                tags = list(tag_stats.keys())
+                counts = list(tag_stats.values())
+
+                y_pos = list(range(len(tags)))
+                bars = ax4.barh(y_pos, counts, color='#00e676', edgecolor='#00a854', linewidth=1.5)
+                max_count = max(counts) if counts else 1
+                for i, (bar, count) in enumerate(zip(bars, counts)):
+                    intensity = count / max_count
                     alpha = 0.5 + intensity * 0.5
                     bar.set_color((0/255, 230/255, 118/255, alpha))
                 ax4.set_yticks(y_pos)
-                ax4.set_yticklabels(names)
+                ax4.set_yticklabels(tags)
                 ax4.invert_yaxis()
-                ax4.set_xlabel('Views', color='#B0B0B0', fontsize=10)
-                ax4.set_title('Top 10 Most Viewed Wallpapers', color='white', fontsize=13, pad=10, weight='bold')
+                ax4.set_xlabel('Wallpaper Count', color='#B0B0B0', fontsize=10)
+                ax4.set_title('Top 10 Most Common Tags', color='white', fontsize=13, pad=10, weight='bold')
                 ax4.tick_params(colors='#B0B0B0', labelsize=9)
                 ax4.set_facecolor('#3D2B3F')
                 for spine in ax4.spines.values():
                     spine.set_edgecolor('#B0B0B0')
                     spine.set_linewidth(0.5)
                 ax4.grid(True, alpha=0.2, color='#B0B0B0', linestyle='--', axis='x')
+            else:
+                # Show message if no tags
+                ax4 = fig.add_subplot(gs[2, :])
+                ax4.text(0.5, 0.5, 'No tags available yet. Tags will appear as wallpapers are downloaded.',
+                        ha='center', va='center', transform=ax4.transAxes,
+                        color='#B0B0B0', fontsize=12)
+                ax4.set_facecolor('#3D2B3F')
+                ax4.set_xticks([])
+                ax4.set_yticks([])
+                for spine in ax4.spines.values():
+                    spine.set_visible(False)
 
             canvas = FigureCanvasTkAgg(fig, master=chart_card)
             canvas.draw()

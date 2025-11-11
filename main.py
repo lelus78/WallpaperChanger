@@ -975,18 +975,33 @@ class WallpaperApp:
             note=weather_note,
         )
 
-        # Log wallpaper change to statistics
+        # Log wallpaper change to statistics using real wallpaper paths
         stats_manager = StatisticsManager()
-        for line, prov in results:
-            # Extract wallpaper path from result line if available
-            # Results format is typically "Monitor X: source_info"
-            # We need to get the actual file path, so we'll use the cached_path from processing
-            # For now, log with provider info
-            stats_manager.log_wallpaper_change(
-                wallpaper_path=f"auto_{trigger}",  # Placeholder - we'll improve this
-                provider=prov,
-                action=trigger
-            )
+        manager = self._create_desktop_controller()
+        if manager:
+            try:
+                current_wallpapers = manager.get_all_wallpapers()
+                # Get tags from cache entries
+                cache_entries = {entry.get("path"): entry for entry in self.cache_manager.list_entries()}
+
+                # Log each monitor's wallpaper
+                for i, (line, prov) in enumerate(results):
+                    if i < len(current_wallpapers):
+                        wallpaper_path = current_wallpapers[i].get("path")
+                        if wallpaper_path:
+                            # Get tags from cache metadata
+                            tags = []
+                            if wallpaper_path in cache_entries:
+                                tags = cache_entries[wallpaper_path].get("tags", [])
+
+                            stats_manager.log_wallpaper_change(
+                                wallpaper_path=wallpaper_path,
+                                provider=prov,
+                                action=trigger,
+                                tags=tags
+                            )
+            finally:
+                manager.close()
 
     def apply_cached_wallpaper(self, trigger: str) -> bool:
         if not self.cache_manager.enable_rotation:
@@ -1337,12 +1352,13 @@ class WallpaperApp:
     def _fetch_wallpaper(self, task: Dict) -> Tuple[str, str, Dict]:
         provider = task["provider"]
         query = task["query"]
+        tags = []
         if provider == PROVIDER_WALLHAVEN:
-            url, source_info = self._fetch_wallhaven(task)
+            url, source_info, tags = self._fetch_wallhaven(task)
         elif provider == PROVIDER_PEXELS:
-            url, source_info = self._fetch_pexels(task)
+            url, source_info, tags = self._fetch_pexels(task)
         elif provider == PROVIDER_REDDIT:
-            url, source_info = self._fetch_reddit(task)
+            url, source_info, tags = self._fetch_reddit(task)
         else:
             raise RuntimeError(f"Unsupported provider '{provider}'")
 
@@ -1352,6 +1368,7 @@ class WallpaperApp:
             "query": query,
             "monitor": task["label"],
             "source_info": source_info,
+            "tags": tags,
         }
         playlist_name = task.get("playlist")
         if playlist_name:
@@ -1469,7 +1486,16 @@ class WallpaperApp:
                 task["query"],
                 " -> ".join(chosen_notes),
             )
-        return choice["path"], source_info
+
+        # Extract tags from Wallhaven response
+        tags = []
+        if "tags" in choice and isinstance(choice["tags"], list):
+            tags = [tag.get("name", "") for tag in choice["tags"] if tag.get("name")]
+        # Add category as tag
+        if "category" in choice:
+            tags.append(choice["category"])
+
+        return choice["path"], source_info, tags
 
     def _fetch_reddit(self, task: Dict) -> Tuple[str, str]:
         settings = dict(task.get("reddit") or {})
@@ -1584,6 +1610,7 @@ class WallpaperApp:
                     "subreddit": subreddit,
                     "permalink": post.get("permalink"),
                     "title": post.get("title") or "Untitled",
+                    "link_flair_text": post.get("link_flair_text"),
                 }
                 if candidate["score"] >= min_score:
                     preferred.append(candidate)
@@ -1615,7 +1642,12 @@ class WallpaperApp:
         if note:
             source_info += note
 
-        return choice["url"], source_info
+        # Extract tags from Reddit (use subreddit and flair as tags)
+        tags = [f"r/{subreddit}"]
+        if "link_flair_text" in choice and choice.get("link_flair_text"):
+            tags.append(choice["link_flair_text"])
+
+        return choice["url"], source_info, tags
 
     def _fetch_pexels(self, task: Dict) -> Tuple[str, str]:
         if not normalize_string(PexelsApiKey):
@@ -1671,7 +1703,18 @@ class WallpaperApp:
         if photographer_url:
             source_info += f" ({photographer_url})"
 
-        return image_url, source_info
+        # Extract tags from Pexels (use alt text as tags if available)
+        tags = []
+        if "alt" in choice and choice.get("alt"):
+            # Split alt text into words as tags
+            alt_words = choice["alt"].split()
+            # Take first few meaningful words as tags
+            tags = [word.strip().lower() for word in alt_words[:5] if len(word) > 3]
+        # Add orientation as tag
+        if filters.get("orientation"):
+            tags.append(filters["orientation"])
+
+        return image_url, source_info, tags
 
     def _resolve_wallpaper(self, task: Dict) -> Tuple[str, str, Dict]:
         provider_candidates = task.get("provider_candidates", [task["provider"]])

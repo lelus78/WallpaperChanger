@@ -52,7 +52,7 @@ class StatisticsManager:
             print(f"[ERROR] Failed to save statistics: {e}")
 
     def log_wallpaper_change(self, wallpaper_path: str, provider: str = "unknown",
-                            action: str = "auto"):
+                            action: str = "auto", tags: Optional[List[str]] = None):
         """Log a wallpaper change event"""
         timestamp = datetime.now().isoformat()
         date_key = datetime.now().strftime("%Y-%m-%d")
@@ -76,9 +76,18 @@ class StatisticsManager:
                 "last_viewed": timestamp,
                 "rating": 0,
                 "favorite": False,
-                "tags": [],
+                "tags": tags or [],
                 "provider": provider
             }
+        else:
+            # Merge new tags with existing ones
+            existing_tags = self.data["wallpapers"][wallpaper_path].get("tags", [])
+            if tags:
+                # Add new tags that don't exist yet
+                for tag in tags:
+                    if tag and tag not in existing_tags:
+                        existing_tags.append(tag)
+                self.data["wallpapers"][wallpaper_path]["tags"] = existing_tags
 
         self.data["wallpapers"][wallpaper_path]["views"] += 1
         self.data["wallpapers"][wallpaper_path]["last_viewed"] = timestamp
@@ -301,3 +310,36 @@ class StatisticsManager:
         else:
             self.ban_wallpaper(wallpaper_path)
             return True
+
+    def cleanup_placeholder_paths(self):
+        """Remove placeholder paths like 'auto_hotkey', 'auto_startup', etc."""
+        placeholder_paths = [
+            path for path in self.data["wallpapers"].keys()
+            if path.startswith("auto_") and not os.path.exists(path)
+        ]
+
+        for path in placeholder_paths:
+            del self.data["wallpapers"][path]
+
+        # Also clean from history
+        self.data["history"] = [
+            entry for entry in self.data["history"]
+            if not (entry["path"].startswith("auto_") and not os.path.exists(entry["path"]))
+        ]
+
+        if placeholder_paths:
+            self._save_data()
+            print(f"[INFO] Cleaned up {len(placeholder_paths)} placeholder entries from statistics")
+
+    def get_tag_stats(self, limit: int = 10) -> Dict[str, int]:
+        """Get most used tags with their counts"""
+        tag_counts = defaultdict(int)
+        for data in self.data["wallpapers"].values():
+            tags = data.get("tags", [])
+            for tag in tags:
+                if tag:
+                    tag_counts[tag] += 1
+
+        # Sort by count and return top N
+        sorted_tags = sorted(tag_counts.items(), key=lambda x: x[1], reverse=True)
+        return dict(sorted_tags[:limit])

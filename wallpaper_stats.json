@@ -9,11 +9,68 @@
       "provider": "reddit"
     },
     "auto_hotkey": {
-      "views": 6,
-      "last_viewed": "2025-11-11T08:59:18.188473",
+      "views": 10,
+      "last_viewed": "2025-11-11T09:07:19.849199",
       "rating": 0,
       "favorite": false,
       "tags": [],
+      "provider": "pexels"
+    },
+    "C:\\Users\\EmanueleO\\WallpaperChangerCache\\1762847157207_2396.jpg": {
+      "views": 0,
+      "last_viewed": "2025-11-11T09:06:39.872926",
+      "rating": 5,
+      "favorite": false,
+      "tags": [],
+      "provider": "unknown"
+    },
+    "auto_scheduler": {
+      "views": 2,
+      "last_viewed": "2025-11-11T09:06:53.913630",
+      "rating": 0,
+      "favorite": false,
+      "tags": [],
+      "provider": "pexels"
+    },
+    "C:\\Users\\EmanueleO\\wallpaper_monitor_0.bmp": {
+      "views": 3,
+      "last_viewed": "2025-11-11T09:26:39.418983",
+      "rating": 0,
+      "favorite": false,
+      "tags": [],
+      "provider": "pexels"
+    },
+    "C:\\Users\\EmanueleO\\wallpaper_monitor_1.bmp": {
+      "views": 3,
+      "last_viewed": "2025-11-11T09:26:39.421904",
+      "rating": 0,
+      "favorite": false,
+      "tags": [],
+      "provider": "pexels"
+    },
+    "C:\\Users\\EmanueleO\\WallpaperChangerCache\\1762849665810_5054.jpg": {
+      "views": 1,
+      "last_viewed": "2025-11-11T09:27:49.010971",
+      "rating": 0,
+      "favorite": false,
+      "tags": [
+        "serene",
+        "image",
+        "landscape"
+      ],
+      "provider": "pexels"
+    },
+    "C:\\Users\\EmanueleO\\WallpaperChangerCache\\1762848338694_8980.jpg": {
+      "views": 1,
+      "last_viewed": "2025-11-11T09:27:49.013887",
+      "rating": 0,
+      "favorite": false,
+      "tags": [
+        "picturesque",
+        "aerial",
+        "view",
+        "landscape"
+      ],
       "provider": "pexels"
     }
   },
@@ -25,40 +82,124 @@
       "action": "manual"
     },
     {
-      "timestamp": "2025-11-11T08:58:25.701418",
+      "timestamp": "2025-11-11T09:05:15.719209",
       "path": "auto_hotkey",
       "provider": "pexels",
       "action": "hotkey"
     },
     {
-      "timestamp": "2025-11-11T08:58:25.703365",
+      "timestamp": "2025-11-11T09:05:15.723102",
       "path": "auto_hotkey",
       "provider": "pexels",
       "action": "hotkey"
     },
     {
-      "timestamp": "2025-11-11T08:58:49.471587",
+      "timestamp": "2025-11-11T09:05:39.022148",
       "path": "auto_hotkey",
       "provider": "pexels",
       "action": "hotkey"
     },
     {
-      "timestamp": "2025-11-11T08:58:49.473462",
+      "timestamp": "2025-11-11T09:05:39.024103",
       "path": "auto_hotkey",
       "provider": "pexels",
       "action": "hotkey"
     },
     {
-      "timestamp": "2025-11-11T08:59:18.187542",
+      "timestamp": "2025-11-11T09:06:17.744743",
       "path": "auto_hotkey",
       "provider": "reddit",
       "action": "hotkey"
     },
     {
-      "timestamp": "2025-11-11T08:59:18.188473",
+      "timestamp": "2025-11-11T09:06:17.747662",
       "path": "auto_hotkey",
       "provider": "reddit",
       "action": "hotkey"
+    },
+    {
+      "timestamp": "2025-11-11T09:06:51.709410",
+      "path": "auto_hotkey",
+      "provider": "pexels",
+      "action": "hotkey"
+    },
+    {
+      "timestamp": "2025-11-11T09:06:51.711959",
+      "path": "auto_hotkey",
+      "provider": "pexels",
+      "action": "hotkey"
+    },
+    {
+      "timestamp": "2025-11-11T09:06:53.911639",
+      "path": "auto_scheduler",
+      "provider": "pexels",
+      "action": "scheduler"
+    },
+    {
+      "timestamp": "2025-11-11T09:06:53.913630",
+      "path": "auto_scheduler",
+      "provider": "pexels",
+      "action": "scheduler"
+    },
+    {
+      "timestamp": "2025-11-11T09:07:19.847301",
+      "path": "auto_hotkey",
+      "provider": "reddit",
+      "action": "hotkey"
+    },
+    {
+      "timestamp": "2025-11-11T09:07:19.849199",
+      "path": "auto_hotkey",
+      "provider": "reddit",
+      "action": "hotkey"
+    },
+    {
+      "timestamp": "2025-11-11T09:25:32.232848",
+      "path": "C:\\Users\\EmanueleO\\wallpaper_monitor_0.bmp",
+      "provider": "pexels",
+      "action": "startup"
+    },
+    {
+      "timestamp": "2025-11-11T09:25:32.235768",
+      "path": "C:\\Users\\EmanueleO\\wallpaper_monitor_1.bmp",
+      "provider": "pexels",
+      "action": "startup"
+    },
+    {
+      "timestamp": "2025-11-11T09:25:35.790455",
+      "path": "C:\\Users\\EmanueleO\\wallpaper_monitor_0.bmp",
+      "provider": "pexels",
+      "action": "gui"
+    },
+    {
+      "timestamp": "2025-11-11T09:25:35.792402",
+      "path": "C:\\Users\\EmanueleO\\wallpaper_monitor_1.bmp",
+      "provider": "pexels",
+      "action": "gui"
+    },
+    {
+      "timestamp": "2025-11-11T09:26:39.418983",
+      "path": "C:\\Users\\EmanueleO\\wallpaper_monitor_0.bmp",
+      "provider": "reddit",
+      "action": "scheduler"
+    },
+    {
+      "timestamp": "2025-11-11T09:26:39.421904",
+      "path": "C:\\Users\\EmanueleO\\wallpaper_monitor_1.bmp",
+      "provider": "reddit",
+      "action": "scheduler"
+    },
+    {
+      "timestamp": "2025-11-11T09:27:49.010971",
+      "path": "C:\\Users\\EmanueleO\\WallpaperChangerCache\\1762849665810_5054.jpg",
+      "provider": "pexels",
+      "action": "startup"
+    },
+    {
+      "timestamp": "2025-11-11T09:27:49.013887",
+      "path": "C:\\Users\\EmanueleO\\WallpaperChangerCache\\1762848338694_8980.jpg",
+      "provider": "pexels",
+      "action": "startup"
     }
   ],
   "daily_stats": {
@@ -71,11 +212,11 @@
       }
     },
     "2025-11-11": {
-      "changes": 20,
+      "changes": 40,
       "providers": {
-        "reddit": 8,
+        "reddit": 14,
         "wallhaven": 4,
-        "pexels": 8
+        "pexels": 22
       }
     }
   },
@@ -86,7 +227,7 @@
     "C:\\Users\\EmanueleO\\WallpaperChangerCache\\1762445749722_5997.jpg"
   ],
   "preferences": {
-    "total_changes": 99,
+    "total_changes": 119,
     "favorite_provider": null,
     "favorite_time": null
   }

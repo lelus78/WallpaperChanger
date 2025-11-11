@@ -918,11 +918,13 @@ class WallpaperApp:
                 return
 
             results: List[Tuple[str, str]] = []
+            cached_paths_and_metadata: List[Tuple[str, Dict]] = []
             try:
                 if manager and len(tasks) > 1:
                     for index, task in enumerate(tasks):
-                        line, used_provider = self._process_task(task, index, manager)
+                        line, used_provider, cached_path, metadata = self._process_task(task, index, manager)
                         results.append((line, used_provider))
+                        cached_paths_and_metadata.append((cached_path, metadata))
                 elif len(tasks) > 1:
                     self.logger.info("Per-monitor API unavailable; composing a span wallpaper instead.")
                     results.extend(self._apply_span(tasks))
@@ -975,33 +977,18 @@ class WallpaperApp:
             note=weather_note,
         )
 
-        # Log wallpaper change to statistics using real wallpaper paths
+        # Log wallpaper change to statistics using cached paths
         stats_manager = StatisticsManager()
-        manager = self._create_desktop_controller()
-        if manager:
-            try:
-                current_wallpapers = manager.get_all_wallpapers()
-                # Get tags from cache entries
-                cache_entries = {entry.get("path"): entry for entry in self.cache_manager.list_entries()}
-
-                # Log each monitor's wallpaper
-                for i, (line, prov) in enumerate(results):
-                    if i < len(current_wallpapers):
-                        wallpaper_path = current_wallpapers[i].get("path")
-                        if wallpaper_path:
-                            # Get tags from cache metadata
-                            tags = []
-                            if wallpaper_path in cache_entries:
-                                tags = cache_entries[wallpaper_path].get("tags", [])
-
-                            stats_manager.log_wallpaper_change(
-                                wallpaper_path=wallpaper_path,
-                                provider=prov,
-                                action=trigger,
-                                tags=tags
-                            )
-            finally:
-                manager.close()
+        for i, (cached_path, metadata) in enumerate(cached_paths_and_metadata):
+            if i < len(results):
+                _, prov = results[i]
+                tags = metadata.get("tags", [])
+                stats_manager.log_wallpaper_change(
+                    wallpaper_path=cached_path,
+                    provider=prov,
+                    action=trigger,
+                    tags=tags
+                )
 
     def apply_cached_wallpaper(self, trigger: str) -> bool:
         if not self.cache_manager.enable_rotation:
@@ -1202,12 +1189,12 @@ class WallpaperApp:
 
         return tasks
 
-    def _process_task(self, task: Dict, index: int, manager: DesktopWallpaperController) -> Tuple[str, str]:
+    def _process_task(self, task: Dict, index: int, manager: DesktopWallpaperController) -> Tuple[str, str, str, Dict]:
         url, source_info, metadata = self._resolve_wallpaper(task)
         download_path = os.path.join(os.path.expanduser("~"), DOWNLOAD_TEMPLATE.format(index=index))
         self._download_wallpaper(url, download_path)
         cached_path = self.cache_manager.store(download_path, metadata) or download_path
-        
+
         # For now, let's just write the info for the first monitor
         if index == 0:
             self._write_current_wallpaper_info(cached_path, metadata)
@@ -1218,7 +1205,7 @@ class WallpaperApp:
         bmp_path = os.path.join(os.path.expanduser("~"), BMP_TEMPLATE.format(index=index))
         self._convert_to_bmp(cached_path, bmp_path, task["target_size"])
         manager.set_wallpaper(task["monitor"]["id"], bmp_path)
-        return f"{task['label']}: {source_info}", metadata["provider"]
+        return f"{task['label']}: {source_info}", metadata["provider"], cached_path, metadata
 
     def _process_single(self, task: Dict) -> Tuple[str, str]:
         url, source_info, metadata = self._resolve_wallpaper(task)

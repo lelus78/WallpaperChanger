@@ -72,6 +72,33 @@
         "landscape"
       ],
       "provider": "pexels"
+    },
+    "C:\\Users\\EmanueleO\\WallpaperChangerCache\\1762849731094_2549.jpg": {
+      "views": 1,
+      "last_viewed": "2025-11-11T09:28:53.256659",
+      "rating": 0,
+      "favorite": false,
+      "tags": [
+        "person",
+        "walks",
+        "along",
+        "landscape"
+      ],
+      "provider": "pexels"
+    },
+    "C:\\Users\\EmanueleO\\WallpaperChangerCache\\1762849732766_5444.jpg": {
+      "views": 1,
+      "last_viewed": "2025-11-11T09:28:53.258605",
+      "rating": 0,
+      "favorite": false,
+      "tags": [
+        "majestic",
+        "view",
+        "snow-covered",
+        "tatra",
+        "landscape"
+      ],
+      "provider": "pexels"
     }
   },
   "history": [
@@ -200,6 +227,18 @@
       "path": "C:\\Users\\EmanueleO\\WallpaperChangerCache\\1762848338694_8980.jpg",
       "provider": "pexels",
       "action": "startup"
+    },
+    {
+      "timestamp": "2025-11-11T09:28:53.256659",
+      "path": "C:\\Users\\EmanueleO\\WallpaperChangerCache\\1762849731094_2549.jpg",
+      "provider": "pexels",
+      "action": "scheduler"
+    },
+    {
+      "timestamp": "2025-11-11T09:28:53.258605",
+      "path": "C:\\Users\\EmanueleO\\WallpaperChangerCache\\1762849732766_5444.jpg",
+      "provider": "pexels",
+      "action": "scheduler"
     }
   ],
   "daily_stats": {
@@ -212,11 +251,11 @@
       }
     },
     "2025-11-11": {
-      "changes": 40,
+      "changes": 42,
       "providers": {
         "reddit": 14,
         "wallhaven": 4,
-        "pexels": 22
+        "pexels": 24
       }
     }
   },
@@ -227,7 +266,7 @@
     "C:\\Users\\EmanueleO\\WallpaperChangerCache\\1762445749722_5997.jpg"
   ],
   "preferences": {
-    "total_changes": 119,
+    "total_changes": 121,
     "favorite_provider": null,
     "favorite_time": null
   }

@@ -841,7 +841,7 @@ class ModernWallpaperGUI:
         """Handle sort change and filter"""
         self._load_wallpaper_grid()
 
-    def _on_filter_change(self, choice: str):
+    def _on_filter_change(self, choice: str = None):
         """Handle tag filter change"""
         self._load_wallpaper_grid()
 

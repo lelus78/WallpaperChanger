@@ -45,7 +45,7 @@ class ModernWallpaperGUI:
         self.root = ctk.CTk()
         self.root.title("Wallpaper Changer")
         self.root.geometry("1400x900")
-        self.root.minsize(950, 600)  # Minimum window size to prevent UI clipping
+        self.root.minsize(1100, 600)  # Minimum window size to fit 3-column layout
 
         # Configure grid layout
         self.root.grid_columnconfigure(1, weight=1)
@@ -416,25 +416,9 @@ class ModernWallpaperGUI:
 
     def _setup_wallpaper_resize_handler(self):
         """Setup resize handler that only works when on Wallpapers page"""
-        if not hasattr(self, '_last_window_width'):
-            self._last_window_width = 0
-        if not hasattr(self, '_resize_timer'):
-            self._resize_timer = None
-
-        def check_resize():
-            try:
-                current_width = self.root.winfo_width()
-                if abs(current_width - self._last_window_width) > 100:  # Reduced from 360 to 100 for better responsiveness
-                    if hasattr(self, 'wallpapers_scrollable_frame') and self.wallpapers_scrollable_frame.winfo_exists():
-                        self._last_window_width = current_width
-                        self._load_wallpaper_grid()
-            except:
-                pass
-            if hasattr(self, 'wallpapers_scrollable_frame') and self.wallpapers_scrollable_frame.winfo_exists():
-                self._resize_timer = self.root.after(500, check_resize)  # Reduced from 1000ms to 500ms
-
-        self._last_window_width = self.root.winfo_width()
-        self._resize_timer = self.root.after(1000, check_resize)
+        # Disabled automatic resize - cards now use fixed grid layout
+        # User can manually refresh if needed using the refresh button
+        pass
 
     def _load_wallpaper_grid(self):
         """Load wallpapers into the grid with current filter/sort settings"""
@@ -445,19 +429,13 @@ class ModernWallpaperGUI:
         for widget in scrollable_frame.winfo_children():
             widget.destroy()
 
-        try:
-            window_width = self.root.winfo_width()
-            card_width = 360
-            sidebar_width = 250
-            padding = 100
-            available_width = window_width - sidebar_width - padding
-            num_columns = max(2, min(6, available_width // card_width))
-        except:
-            num_columns = 3
+        # Use fixed 3-column layout for consistency
+        # Cards will expand/shrink naturally with window size
+        num_columns = 3
 
-        # Configure columns with weight so they expand/shrink with window
+        # Configure columns with weight and minimum size
         for i in range(num_columns):
-            scrollable_frame.grid_columnconfigure(i, weight=1, uniform="card", minsize=280)
+            scrollable_frame.grid_columnconfigure(i, weight=1, minsize=320)
 
         if not self.cache_manager or not self.cache_manager.has_items():
             empty_label = ctk.CTkLabel(

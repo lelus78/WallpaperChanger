@@ -1597,9 +1597,39 @@ class ModernWallpaperGUI:
         )
         title.pack(side="left", anchor="w")
 
+        # Right side controls
+        controls_frame = ctk.CTkFrame(header_frame, fg_color="transparent")
+        controls_frame.pack(side="right")
+
+        # Sensitivity selector
+        sensitivity_frame = ctk.CTkFrame(controls_frame, fg_color="transparent")
+        sensitivity_frame.pack(side="left", padx=(0, 15))
+
+        ctk.CTkLabel(
+            sensitivity_frame,
+            text="Sensitivity:",
+            font=ctk.CTkFont(size=13),
+            text_color=self.COLORS['text_muted']
+        ).pack(side="left", padx=(0, 8))
+
+        # Initialize sensitivity variable if not exists
+        if not hasattr(self, 'duplicate_sensitivity'):
+            self.duplicate_sensitivity = ctk.StringVar(value="Similar")
+
+        sensitivity_menu = ctk.CTkOptionMenu(
+            sensitivity_frame,
+            variable=self.duplicate_sensitivity,
+            values=["Exact", "Very Similar", "Similar", "Somewhat Similar"],
+            width=150,
+            fg_color=self.COLORS['card_bg'],
+            button_color=self.COLORS['accent'],
+            button_hover_color=self.COLORS['sidebar_hover']
+        )
+        sensitivity_menu.pack(side="left")
+
         # Scan button
         scan_btn = ctk.CTkButton(
-            header_frame,
+            controls_frame,
             text="🔍 Scan for Duplicates",
             font=ctk.CTkFont(size=14),
             width=180,
@@ -1609,7 +1639,7 @@ class ModernWallpaperGUI:
             corner_radius=8,
             command=self._scan_for_duplicates
         )
-        scan_btn.pack(side="right", padx=10)
+        scan_btn.pack(side="left")
 
         # Scrollable content
         scrollable = ctk.CTkScrollableFrame(
@@ -1672,9 +1702,19 @@ class ModernWallpaperGUI:
             ).pack(pady=100)
             return
 
+        # Get selected sensitivity
+        sensitivity_map = {
+            "Exact": DuplicateDetector.EXACT_MATCH,
+            "Very Similar": DuplicateDetector.VERY_SIMILAR,
+            "Similar": DuplicateDetector.SIMILAR,
+            "Somewhat Similar": DuplicateDetector.SOMEWHAT_SIMILAR
+        }
+        sensitivity = self.duplicate_sensitivity.get()
+        threshold = sensitivity_map.get(sensitivity, DuplicateDetector.SIMILAR)
+
         # Find duplicates
         detector = DuplicateDetector()
-        duplicates = detector.find_duplicates(image_paths, threshold=DuplicateDetector.SIMILAR)
+        duplicates = detector.find_duplicates(image_paths, threshold=threshold)
 
         scanning_label.destroy()
 

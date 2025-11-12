@@ -149,6 +149,7 @@ class ModernWallpaperGUI:
         nav_items = [
             ("Home", "●", "#FFD93D"),      # Yellow home icon
             ("Wallpapers", "●", "#00e676"), # Green wallpapers icon
+            ("Duplicates", "●", "#ff9500"), # Orange duplicates icon
             ("Settings", "●", "#89b4fa"),   # Blue settings icon
             ("Logs", "●", "#ff6b81"),       # Red logs icon
         ]
@@ -810,6 +811,8 @@ class ModernWallpaperGUI:
                 self._show_home_view()
             elif view == "Wallpapers":
                 self._show_wallpapers_view()
+            elif view == "Duplicates":
+                self._show_duplicates_view()
             elif view == "Settings":
                 self._show_settings_view()
             elif view == "Logs":
@@ -1572,6 +1575,288 @@ class ModernWallpaperGUI:
                 font=ctk.CTkFont(size=14),
                 text_color=self.COLORS['text_muted']
             ).pack(pady=30)
+
+    def _show_duplicates_view(self):
+        """Show duplicate wallpapers detection and management"""
+        from duplicate_detector import DuplicateDetector
+
+        view_container = ctk.CTkFrame(self.content_container, fg_color="transparent")
+        view_container.pack(fill="both", expand=True)
+        self._view_cache["Duplicates"] = view_container
+
+        # Header
+        header_frame = ctk.CTkFrame(view_container, fg_color="transparent", height=70)
+        header_frame.pack(fill="x", padx=30, pady=(20, 0))
+        header_frame.pack_propagate(False)
+
+        title = ctk.CTkLabel(
+            header_frame,
+            text="Duplicate Detection",
+            font=ctk.CTkFont(size=28, weight="bold"),
+            text_color=self.COLORS['text_light']
+        )
+        title.pack(side="left", anchor="w")
+
+        # Scan button
+        scan_btn = ctk.CTkButton(
+            header_frame,
+            text="🔍 Scan for Duplicates",
+            font=ctk.CTkFont(size=14),
+            width=180,
+            height=40,
+            fg_color=self.COLORS['accent'],
+            hover_color=self.COLORS['sidebar_hover'],
+            corner_radius=8,
+            command=self._scan_for_duplicates
+        )
+        scan_btn.pack(side="right", padx=10)
+
+        # Scrollable content
+        scrollable = ctk.CTkScrollableFrame(
+            view_container,
+            fg_color="transparent",
+            scrollbar_button_color=self.COLORS['accent'],
+            scrollbar_button_hover_color=self.COLORS['sidebar_hover']
+        )
+        scrollable.pack(fill="both", expand=True, padx=30, pady=20)
+
+        # Store reference for updates
+        self.duplicates_content = scrollable
+
+        # Initial message
+        self._show_duplicates_placeholder()
+
+    def _show_duplicates_placeholder(self):
+        """Show placeholder message"""
+        for widget in self.duplicates_content.winfo_children():
+            widget.destroy()
+
+        placeholder = ctk.CTkLabel(
+            self.duplicates_content,
+            text="Click 'Scan for Duplicates' to find similar wallpapers\n\nThis will compare all cached wallpapers using perceptual hashing.",
+            font=ctk.CTkFont(size=16),
+            text_color=self.COLORS['text_muted'],
+            justify="center"
+        )
+        placeholder.pack(pady=100)
+
+    def _scan_for_duplicates(self):
+        """Scan for duplicates and display results"""
+        from duplicate_detector import DuplicateDetector
+
+        # Clear current content
+        for widget in self.duplicates_content.winfo_children():
+            widget.destroy()
+
+        # Show scanning message
+        scanning_label = ctk.CTkLabel(
+            self.duplicates_content,
+            text="Scanning wallpapers for duplicates...",
+            font=ctk.CTkFont(size=16),
+            text_color=self.COLORS['text_light']
+        )
+        scanning_label.pack(pady=50)
+        self.root.update()
+
+        # Get all wallpaper paths
+        entries = self.cache_manager._index.get("items", [])
+        image_paths = [entry.get("path") for entry in entries if entry.get("path") and os.path.exists(entry.get("path"))]
+
+        if len(image_paths) < 2:
+            scanning_label.destroy()
+            ctk.CTkLabel(
+                self.duplicates_content,
+                text="Not enough wallpapers to compare.\nDownload at least 2 wallpapers first.",
+                font=ctk.CTkFont(size=16),
+                text_color=self.COLORS['text_muted']
+            ).pack(pady=100)
+            return
+
+        # Find duplicates
+        detector = DuplicateDetector()
+        duplicates = detector.find_duplicates(image_paths, threshold=DuplicateDetector.SIMILAR)
+
+        scanning_label.destroy()
+
+        if not duplicates:
+            ctk.CTkLabel(
+                self.duplicates_content,
+                text=f"No duplicates found!\n\nScanned {len(image_paths)} wallpapers - all unique.",
+                font=ctk.CTkFont(size=16),
+                text_color=self.COLORS['text_light']
+            ).pack(pady=100)
+            return
+
+        # Show results header
+        results_header = ctk.CTkFrame(self.duplicates_content, fg_color="transparent")
+        results_header.pack(fill="x", pady=(0, 20))
+
+        ctk.CTkLabel(
+            results_header,
+            text=f"Found {len(duplicates)} similar pair(s)",
+            font=ctk.CTkFont(size=18, weight="bold"),
+            text_color=self.COLORS['text_light']
+        ).pack(side="left")
+
+        # Display each duplicate pair
+        for idx, (path1, path2, distance) in enumerate(duplicates, 1):
+            self._create_duplicate_comparison_card(path1, path2, distance, idx)
+
+    def _create_duplicate_comparison_card(self, path1: str, path2: str, distance: int, pair_num: int):
+        """Create a card showing two duplicate wallpapers side by side"""
+        from duplicate_detector import DuplicateDetector
+
+        detector = DuplicateDetector()
+        similarity = detector.get_similarity_description(distance)
+
+        # Card container
+        card = ctk.CTkFrame(
+            self.duplicates_content,
+            fg_color=self.COLORS['card_bg'],
+            corner_radius=12
+        )
+        card.pack(fill="x", pady=10)
+
+        # Header with similarity info
+        header = ctk.CTkFrame(card, fg_color="transparent")
+        header.pack(fill="x", padx=20, pady=15)
+
+        ctk.CTkLabel(
+            header,
+            text=f"Pair #{pair_num}",
+            font=ctk.CTkFont(size=16, weight="bold"),
+            text_color=self.COLORS['text_light']
+        ).pack(side="left")
+
+        similarity_label = ctk.CTkLabel(
+            header,
+            text=f"{similarity} (distance: {distance})",
+            font=ctk.CTkFont(size=14),
+            text_color=self.COLORS['accent']
+        )
+        similarity_label.pack(side="left", padx=20)
+
+        # Comparison frame
+        comparison = ctk.CTkFrame(card, fg_color="transparent")
+        comparison.pack(fill="both", expand=True, padx=20, pady=(0, 20))
+
+        # Left wallpaper
+        self._create_duplicate_item(comparison, path1, "left", pair_num, path2)
+
+        # VS label
+        ctk.CTkLabel(
+            comparison,
+            text="VS",
+            font=ctk.CTkFont(size=24, weight="bold"),
+            text_color=self.COLORS['text_muted']
+        ).pack(side="left", padx=20)
+
+        # Right wallpaper
+        self._create_duplicate_item(comparison, path2, "right", pair_num, path1)
+
+    def _create_duplicate_item(self, parent, image_path: str, side: str, pair_num: int, other_path: str):
+        """Create one side of duplicate comparison"""
+        container = ctk.CTkFrame(parent, fg_color=self.COLORS['main_bg'], corner_radius=8)
+        container.pack(side="left", fill="both", expand=True, padx=10)
+
+        # Load and display image
+        try:
+            pil_image = Image.open(image_path)
+            # Resize for preview
+            pil_image.thumbnail((400, 300), Image.Resampling.LANCZOS)
+            photo = ctk.CTkImage(light_image=pil_image, dark_image=pil_image, size=pil_image.size)
+
+            img_label = ctk.CTkLabel(container, image=photo, text="")
+            img_label.pack(pady=15)
+            self.image_references.append(photo)
+        except Exception as e:
+            ctk.CTkLabel(
+                container,
+                text=f"Error loading image\n{str(e)}",
+                text_color=self.COLORS['error']
+            ).pack(pady=15)
+
+        # Info
+        info_frame = ctk.CTkFrame(container, fg_color="transparent")
+        info_frame.pack(fill="x", padx=15, pady=(0, 10))
+
+        filename = os.path.basename(image_path)
+        ctk.CTkLabel(
+            info_frame,
+            text=filename[:40] + "..." if len(filename) > 40 else filename,
+            font=ctk.CTkFont(size=11),
+            text_color=self.COLORS['text_muted']
+        ).pack()
+
+        # Get metadata
+        entry = next((e for e in self.cache_manager._index.get("items", []) if e.get("path") == image_path), None)
+        if entry:
+            source = entry.get("source_info", "Unknown")[:50]
+            ctk.CTkLabel(
+                info_frame,
+                text=source,
+                font=ctk.CTkFont(size=10),
+                text_color=self.COLORS['text_muted']
+            ).pack()
+
+        # Action buttons
+        btn_frame = ctk.CTkFrame(container, fg_color="transparent")
+        btn_frame.pack(fill="x", padx=15, pady=(5, 15))
+
+        # Keep button
+        keep_btn = ctk.CTkButton(
+            btn_frame,
+            text="✓ Keep",
+            width=80,
+            height=32,
+            fg_color="#00e676",
+            hover_color="#00c853",
+            command=lambda: self._keep_wallpaper(image_path, other_path, pair_num)
+        )
+        keep_btn.pack(side="left", padx=5)
+
+        # Delete button
+        delete_btn = ctk.CTkButton(
+            btn_frame,
+            text="✕ Delete",
+            width=80,
+            height=32,
+            fg_color="#ff6b81",
+            hover_color="#ff4757",
+            command=lambda: self._delete_duplicate(image_path, other_path, pair_num)
+        )
+        delete_btn.pack(side="left", padx=5)
+
+    def _keep_wallpaper(self, keep_path: str, delete_path: str, pair_num: int):
+        """Keep one wallpaper and delete the other"""
+        self._delete_duplicate(delete_path, keep_path, pair_num)
+
+    def _delete_duplicate(self, delete_path: str, keep_path: str, pair_num: int):
+        """Delete a duplicate wallpaper"""
+        try:
+            # Remove from cache
+            items = self.cache_manager._index.get("items", [])
+            self.cache_manager._index["items"] = [item for item in items if item.get("path") != delete_path]
+            self.cache_manager._save()
+
+            # Delete file
+            if os.path.exists(delete_path):
+                os.remove(delete_path)
+
+            # Show success message
+            print(f"[DUPLICATES] Deleted: {os.path.basename(delete_path)}")
+
+            # Rescan to update view
+            self._scan_for_duplicates()
+
+        except Exception as e:
+            print(f"[ERROR] Failed to delete duplicate: {e}")
+            # Show error message
+            ctk.CTkMessagebox(
+                title="Error",
+                message=f"Failed to delete wallpaper:\n{str(e)}",
+                icon="cancel"
+            )
 
     def _show_settings_view(self):
         """Show fully editable settings"""

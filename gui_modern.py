@@ -693,17 +693,26 @@ class ModernWallpaperGUI:
                 )
                 tags_label.pack(side="left", padx=(8, 0))
 
-            # Display primary/dominant color
+            # Display primary/dominant color with badge style
             primary_color = item.get("primary_color")
             if primary_color:
                 color_emoji = "🎨"
-                color_label = ctk.CTkLabel(
+                # Create a frame for the color badge with background
+                color_badge = ctk.CTkFrame(
                     info_frame,
-                    text=f"{color_emoji} {primary_color.capitalize()}",
-                    font=ctk.CTkFont(size=9, weight="bold"),
-                    text_color=self.COLORS['accent'],
+                    fg_color=self.COLORS['accent'],
+                    corner_radius=12,
+                    height=22
                 )
-                color_label.pack(side="left", padx=(8, 0))
+                color_badge.pack(side="left", padx=(8, 0))
+
+                color_label = ctk.CTkLabel(
+                    color_badge,
+                    text=f"{color_emoji} {primary_color.capitalize()}",
+                    font=ctk.CTkFont(size=11, weight="bold"),
+                    text_color="white",
+                )
+                color_label.pack(padx=8, pady=2)
 
             is_banned = self.stats_manager.is_banned(image_path)
             ban_btn = ctk.CTkButton(

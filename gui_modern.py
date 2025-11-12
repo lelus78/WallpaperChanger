@@ -817,13 +817,26 @@ class ModernWallpaperGUI:
 
     def _refresh_home_data(self):
         """Refresh Home view wallpapers without recreating entire view"""
+        # Reload cache manager index from disk
+        self.cache_manager._load()
+        # Reload statistics manager data
         self.stats_manager.data = self.stats_manager._load_data()
         # Clear image references to allow new images to load
         self.image_references.clear()
+
+        # Clear view cache to force recreation of Wallpapers view (updates tag/color filters)
+        if 'Wallpapers' in self._view_cache:
+            del self._view_cache['Wallpapers']
+
+        # Refresh current wallpaper preview if on Home view
         if hasattr(self, 'wallpaper_preview_container') and self.wallpaper_preview_container.winfo_exists():
             for widget in self.wallpaper_preview_container.winfo_children():
                 widget.destroy()
             self._create_current_wallpaper_preview(self.wallpaper_preview_container)
+
+        # If currently on Wallpapers view, reload it
+        if self.active_view == "Wallpapers":
+            self._load_wallpapers_view()
 
     def _update_nav_buttons(self):
         """Update navigation button styles"""

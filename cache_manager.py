@@ -5,6 +5,7 @@ import shutil
 import threading
 import time
 from typing import Dict, List, Optional
+from color_analyzer import ColorAnalyzer
 
 
 class CacheManager:
@@ -51,12 +52,23 @@ class CacheManager:
             target_path = os.path.join(self.directory, f"{cache_id}{extension}")
             shutil.copy2(source_path, target_path)
 
+            # Extract dominant colors for filtering
+            try:
+                color_categories = ColorAnalyzer.get_color_categories(target_path, num_colors=3)
+                primary_color = ColorAnalyzer.get_primary_color_category(target_path)
+            except Exception as e:
+                print(f"[WARNING] Failed to extract colors from {target_path}: {e}")
+                color_categories = []
+                primary_color = None
+
             entry = dict(metadata)
             entry.update(
                 {
                     "id": cache_id,
                     "path": target_path,
                     "timestamp": time.time(),
+                    "color_categories": color_categories,
+                    "primary_color": primary_color,
                 }
             )
             self._index.setdefault("items", []).append(entry)
@@ -93,6 +105,30 @@ class CacheManager:
         with self._lock:
             items = self._index.get("items", [])
             return list(reversed(items))
+
+    def get_all_colors(self) -> List[str]:
+        """Get all unique color categories from cached wallpapers"""
+        with self._lock:
+            items = self._index.get("items", [])
+            colors = set()
+            for item in items:
+                if "color_categories" in item and item["color_categories"]:
+                    colors.update(item["color_categories"])
+                elif "primary_color" in item and item["primary_color"]:
+                    colors.add(item["primary_color"])
+            return sorted(list(colors))
+
+    def get_by_color(self, color: str) -> List[Dict]:
+        """Get wallpapers that contain the specified color"""
+        with self._lock:
+            items = self._index.get("items", [])
+            filtered = []
+            for item in items:
+                color_categories = item.get("color_categories", [])
+                primary_color = item.get("primary_color")
+                if color in color_categories or color == primary_color:
+                    filtered.append(item)
+            return list(reversed(filtered))
 
     @property
     def cache_dir(self) -> str:

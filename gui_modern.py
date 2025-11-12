@@ -310,6 +310,34 @@ class ModernWallpaperGUI:
         )
         tag_menu.pack(side="left", padx=(0, 10))
 
+        # Color filter dropdown
+        ctk.CTkLabel(
+            filter_frame,
+            text="Color:",
+            text_color=self.COLORS['text_muted'],
+            font=ctk.CTkFont(size=13)
+        ).pack(side="left", padx=(0, 10))
+
+        # Create or reuse color_filter_var to preserve selection
+        if not hasattr(self, 'color_filter_var') or not self.color_filter_var:
+            self.color_filter_var = ctk.StringVar(value="All Colors")
+
+        # Get all unique colors from cache
+        all_colors = self.cache_manager.get_all_colors()
+        color_values = ["All Colors"] + sorted(all_colors)
+
+        color_menu = ctk.CTkOptionMenu(
+            filter_frame,
+            variable=self.color_filter_var,
+            values=color_values if color_values else ["All Colors"],
+            width=120,
+            fg_color=self.COLORS['card_bg'],
+            button_color=self.COLORS['accent'],
+            button_hover_color=self.COLORS['sidebar_hover'],
+            command=self._on_filter_change
+        )
+        color_menu.pack(side="left", padx=(0, 10))
+
         # Sort dropdown
         ctk.CTkLabel(
             filter_frame,
@@ -423,11 +451,18 @@ class ModernWallpaperGUI:
         items = self.cache_manager.list_entries()
         sort_choice = self.sort_var.get() if hasattr(self, 'sort_var') else "Newest First"
         tag_filter = self.tag_filter_var.get() if hasattr(self, 'tag_filter_var') else "All Tags"
+        color_filter = self.color_filter_var.get() if hasattr(self, 'color_filter_var') else "All Colors"
 
         # Apply tag filter first
         if tag_filter and tag_filter != "All Tags":
             wallpapers_with_tag = self.stats_manager.get_wallpapers_by_tag(tag_filter)
             items = [item for item in items if item.get("path") in wallpapers_with_tag]
+
+        # Apply color filter
+        if color_filter and color_filter != "All Colors":
+            items = [item for item in items
+                    if color_filter in item.get("color_categories", []) or
+                       color_filter == item.get("primary_color")]
 
         if sort_choice == "Banned Only":
             banned = self.stats_manager.get_banned_wallpapers()

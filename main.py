@@ -24,6 +24,7 @@ from config import (
     KeyBind,
     PexelsApiKey,
     PexelsMode,
+    PexelsQuery,
     Provider,
     ProvidersSequence,
     RotateProviders,
@@ -1650,9 +1651,11 @@ class WallpaperApp:
             url = PEXELS_CURATED_URL
         else:
             url = PEXELS_SEARCH_URL
+            # Use PexelsQuery from config, fallback to task query if not set
+            search_query = normalize_string(PexelsQuery) or task["query"] or "nature"
             params.update(
                 {
-                    "query": task["query"],
+                    "query": search_query,
                     "orientation": filters.get("orientation", "landscape"),
                     "size": filters.get("size", "large"),
                 }

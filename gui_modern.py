@@ -1487,7 +1487,7 @@ class ModernWallpaperGUI:
 
         from config import (
             Provider, RotateProviders, Query, PurityLevel, ScreenResolution,
-            WallhavenSorting, WallhavenTopRange, PexelsMode, RedditSettings,
+            WallhavenSorting, WallhavenTopRange, PexelsMode, PexelsQuery, RedditSettings,
             SchedulerSettings, CacheSettings, KeyBind
         )
 
@@ -1499,6 +1499,7 @@ class ModernWallpaperGUI:
         self.sorting_var = ctk.StringVar(value=WallhavenSorting)
         self.toprange_var = ctk.StringVar(value=WallhavenTopRange)
         self.pexels_mode_var = ctk.StringVar(value=PexelsMode)
+        self.pexels_query_var = ctk.StringVar(value=PexelsQuery)
 
         reddit_subreddits = ", ".join(RedditSettings.get("subreddits", ["wallpapers"]))
         self.reddit_subreddits_var = ctk.StringVar(value=reddit_subreddits)
@@ -1544,6 +1545,8 @@ class ModernWallpaperGUI:
         self._add_setting_row(pexels_section, "Mode:", "dropdown", self.pexels_mode_var,
                             ["search", "curated"])
         self._add_help_text(pexels_section, "search=Use search query, curated=Get curated high-quality photos")
+        self._add_setting_row(pexels_section, "Search Query:", "entry", self.pexels_query_var)
+        self._add_help_text(pexels_section, "Search term when using 'search' mode (e.g., nature, abstract, minimal)")
 
         reddit_section = self._create_section(scrollable, "Reddit Settings")
         self._add_setting_row(reddit_section, "Subreddits (comma separated):", "entry", self.reddit_subreddits_var)
@@ -1825,6 +1828,8 @@ class ModernWallpaperGUI:
                     new_lines.append(f'WallhavenTopRange = "{self.toprange_var.get()}"\n')
                 elif line.startswith('PexelsMode = '):
                     new_lines.append(f'PexelsMode = "{self.pexels_mode_var.get()}"\n')
+                elif line.startswith('PexelsQuery = '):
+                    new_lines.append(f'PexelsQuery = "{self.pexels_query_var.get()}"\n')
                 elif line.startswith('KeyBind = '):
                     new_lines.append(f'KeyBind = "{self.keybind_var.get()}"\n')
                 elif '"subreddits":' in line:

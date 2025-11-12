@@ -26,6 +26,9 @@ PexelsApiKey = os.getenv("PEXELS_API_KEY", "")
 # Choose how to fetch wallpapers from Pexels: "search" or "curated"
 PexelsMode = "curated"
 
+# Search query for Pexels when using "search" mode (e.g., "nature", "abstract", "minimal")
+PexelsQuery = "nature"
+
 # Reddit settings for public JSON API access (no authentication required)
 RedditSettings = {
     "user_agent": "WallpaperChanger/1.0 (by u/lelus78)",

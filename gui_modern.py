@@ -819,8 +819,24 @@ class ModernWallpaperGUI:
         """Refresh Home view wallpapers without recreating entire view"""
         # Reload cache manager index from disk
         self.cache_manager._load()
+
         # Reload statistics manager data
         self.stats_manager.data = self.stats_manager._load_data()
+
+        # Clean up statistics for wallpapers that no longer exist in cache
+        cached_paths = {item.get('path') for item in self.cache_manager._index.get('items', [])}
+        stats_wallpapers = self.stats_manager.data.get('wallpapers', {})
+
+        # Remove stats for wallpapers not in cache anymore
+        paths_to_remove = [path for path in stats_wallpapers.keys() if path not in cached_paths]
+        for path in paths_to_remove:
+            del stats_wallpapers[path]
+
+        # Save cleaned statistics
+        if paths_to_remove:
+            self.stats_manager._save_data()
+            print(f"[REFRESH] Cleaned {len(paths_to_remove)} orphaned wallpaper stats")
+
         # Clear image references to allow new images to load
         self.image_references.clear()
 

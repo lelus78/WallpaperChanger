@@ -58,3 +58,6 @@ wallpaper_stats.json
 
 # Gemini generated files
 .genkit/
+
+# Marketing materials (keep local only)
+marketing/

@@ -82,7 +82,7 @@ class ColorAnalyzer:
     @staticmethod
     def get_dominant_colors(image_path: str, num_colors: int = 5) -> List[Tuple[int, int, int]]:
         """
-        Extract dominant colors from an image
+        Extract dominant colors from an image (FAST version using PIL)
 
         Args:
             image_path: Path to the image file
@@ -95,17 +95,29 @@ class ColorAnalyzer:
             return []
 
         try:
-            color_thief = ColorThief(image_path)
+            # Fast version: use PIL directly instead of ColorThief
+            from PIL import Image
 
-            # Get dominant color
-            dominant = color_thief.get_color(quality=1)
+            # Open and resize image to speed up processing
+            img = Image.open(image_path)
+            img = img.convert('RGB')
 
-            # Get color palette
-            if num_colors > 1:
-                palette = color_thief.get_palette(color_count=num_colors, quality=1)
-                return palette
-            else:
-                return [dominant]
+            # Resize to max 200px for speed
+            img.thumbnail((200, 200))
+
+            # Get colors using quantize
+            img = img.quantize(colors=num_colors)
+            palette = img.getpalette()
+
+            # Convert palette to list of RGB tuples
+            colors = []
+            for i in range(num_colors):
+                r = palette[i*3]
+                g = palette[i*3 + 1]
+                b = palette[i*3 + 2]
+                colors.append((r, g, b))
+
+            return colors
 
         except Exception as e:
             print(f"[ERROR] Failed to extract colors from {image_path}: {e}")

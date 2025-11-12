@@ -336,7 +336,22 @@ class ModernWallpaperGUI:
             button_hover_color=self.COLORS['sidebar_hover'],
             command=self._on_filter_change
         )
-        color_menu.pack(side="left", padx=(0, 10))
+        color_menu.pack(side="left", padx=(0, 5))
+
+        # Dominant color only checkbox
+        if not hasattr(self, 'dominant_only_var'):
+            self.dominant_only_var = ctk.BooleanVar(value=False)
+
+        dominant_checkbox = ctk.CTkCheckBox(
+            filter_frame,
+            text="Dominant only",
+            variable=self.dominant_only_var,
+            fg_color=self.COLORS['accent'],
+            hover_color=self.COLORS['sidebar_hover'],
+            command=self._on_filter_change,
+            width=20
+        )
+        dominant_checkbox.pack(side="left", padx=(0, 10))
 
         # Sort dropdown
         ctk.CTkLabel(
@@ -460,9 +475,16 @@ class ModernWallpaperGUI:
 
         # Apply color filter
         if color_filter and color_filter != "All Colors":
-            items = [item for item in items
-                    if color_filter in item.get("color_categories", []) or
-                       color_filter == item.get("primary_color")]
+            dominant_only = self.dominant_only_var.get() if hasattr(self, 'dominant_only_var') else False
+
+            if dominant_only:
+                # Filter only by primary/dominant color
+                items = [item for item in items if color_filter == item.get("primary_color")]
+            else:
+                # Filter by any color in the palette
+                items = [item for item in items
+                        if color_filter in item.get("color_categories", []) or
+                           color_filter == item.get("primary_color")]
 
         if sort_choice == "Banned Only":
             banned = self.stats_manager.get_banned_wallpapers()
@@ -670,6 +692,18 @@ class ModernWallpaperGUI:
                     text_color=self.COLORS['text_muted'],
                 )
                 tags_label.pack(side="left", padx=(8, 0))
+
+            # Display primary/dominant color
+            primary_color = item.get("primary_color")
+            if primary_color:
+                color_emoji = "🎨"
+                color_label = ctk.CTkLabel(
+                    info_frame,
+                    text=f"{color_emoji} {primary_color.capitalize()}",
+                    font=ctk.CTkFont(size=9, weight="bold"),
+                    text_color=self.COLORS['accent'],
+                )
+                color_label.pack(side="left", padx=(8, 0))
 
             is_banned = self.stats_manager.is_banned(image_path)
             ban_btn = ctk.CTkButton(

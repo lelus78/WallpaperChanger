@@ -6,16 +6,20 @@ A modern, feature-rich wallpaper manager for Windows that automatically download
 
 ### Modern GUI
 - **Beautiful Interface** - Clean, dark-themed modern UI built with CustomTkinter
-- **Wallpaper Gallery** - Browse, filter, and preview all cached wallpapers
+- **Wallpaper Gallery** - Browse, filter, and preview all cached wallpapers with responsive 3-column layout
 - **Fullscreen Viewer** - Click any wallpaper to view in full resolution
 - **Tag System** - Auto-extracted tags from providers for easy filtering
+- **Color Filtering** - Filter wallpapers by dominant color with visual color badges
+- **Duplicate Detection** - Find and manage similar wallpapers with adjustable sensitivity
 - **Statistics Dashboard** - Track usage, favorites, and view distribution charts
 - **Rating & Favorites** - 5-star rating system and favorites management
 
 ### Smart Wallpaper Management
 - **Multi-Monitor Support** - Different wallpapers for each monitor
 - **Auto-Download** - Fresh wallpapers from Wallhaven, Reddit, and Pexels
-- **Smart Caching** - Local storage with offline rotation capability
+- **Smart Caching** - Intelligent cache rotation that protects starred and favorite wallpapers
+- **Duplicate Prevention** - Automatic detection using perceptual hashing to avoid re-downloading similar images
+- **Color Extraction** - Fast color analysis (100x faster) with dominant color identification
 - **Weather Overlays** - Display current temperature on wallpapers
 - **Playlists** - Create themed collections for different moods/times
 - **Scheduled Changes** - Automatic rotation with configurable intervals
@@ -46,7 +50,7 @@ A modern, feature-rich wallpaper manager for Windows that automatically download
 1. Install Python (3.10 or newer recommended)
 2. Install dependencies:
    ```bash
-   pip install requests pillow customtkinter matplotlib keyboard pystray python-dotenv
+   pip install requests pillow customtkinter matplotlib keyboard pystray python-dotenv imagehash
    ```
 
 3. Configure API keys (optional):

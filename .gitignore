@@ -10,7 +10,7 @@ temp.txt
 *.tmp
 nul
 *.zip
-output.log
+*.log
 
 # Cache and wallpaper files
 WallpaperChangerCache/

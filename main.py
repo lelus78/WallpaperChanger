@@ -384,6 +384,9 @@ class WallpaperApp:
         self.active_preset = self.preset_manager.default_name
         self.active_playlist = self.playlist_manager.default_name
 
+        # Initialize StatisticsManager for tracking wallpaper usage, ratings, and favorites
+        self.stats_manager = StatisticsManager()
+
         cache_dir = CacheSettings.get("directory") or os.path.join(
             os.path.expanduser("~"), "WallpaperChangerCache"
         )
@@ -391,6 +394,7 @@ class WallpaperApp:
             cache_dir,
             max_items=int(CacheSettings.get("max_items", 60)),
             enable_rotation=bool(CacheSettings.get("enable_offline_rotation", True)),
+            stats_manager=self.stats_manager,  # Pass stats_manager for smart cache rotation
         )
 
         self.scheduler = SchedulerService(self, SchedulerSettings)
@@ -979,12 +983,11 @@ class WallpaperApp:
         )
 
         # Log wallpaper change to statistics using cached paths
-        stats_manager = StatisticsManager()
         for i, (cached_path, metadata) in enumerate(cached_paths_and_metadata):
             if i < len(results):
                 _, prov = results[i]
                 tags = metadata.get("tags", [])
-                stats_manager.log_wallpaper_change(
+                self.stats_manager.log_wallpaper_change(
                     wallpaper_path=cached_path,
                     provider=prov,
                     action=trigger,

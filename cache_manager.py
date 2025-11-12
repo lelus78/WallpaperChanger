@@ -9,10 +9,11 @@ from color_analyzer import ColorAnalyzer
 
 
 class CacheManager:
-    def __init__(self, directory: str, max_items: int = 50, enable_rotation: bool = True):
+    def __init__(self, directory: str, max_items: int = 50, enable_rotation: bool = True, stats_manager=None):
         self.directory = os.path.abspath(os.path.expanduser(directory))
         self.max_items = max_items
         self.enable_rotation = enable_rotation
+        self.stats_manager = stats_manager  # Optional StatisticsManager for smart rotation
         self.index_path = os.path.join(self.directory, "index.json")
         self._lock = threading.Lock()
         self._index: Dict[str, List[Dict]] = {"version": 1, "items": []}
@@ -33,6 +34,70 @@ class CacheManager:
         with open(tmp_path, "w", encoding="utf-8") as handle:
             json.dump(self._index, handle, indent=2)
         os.replace(tmp_path, self.index_path)
+
+    def _smart_select_for_removal(self, items: List[Dict], num_to_remove: int) -> List[Dict]:
+        """
+        Intelligently select wallpapers to remove, protecting important ones.
+        Priority for removal (from highest to lowest):
+        1. Banned wallpapers
+        2. Unrated wallpapers with low views and old timestamp
+        3. Lowest rated wallpapers
+        Never removes: starred (rating > 0) or favorite wallpapers
+        """
+        if not self.stats_manager:
+            # Fallback to simple old behavior if no stats manager
+            return items[:num_to_remove]
+
+        # Categorize wallpapers
+        protected = []  # Starred or favorites
+        banned = []
+        low_priority = []  # Unrated, low views
+        normal = []
+
+        for item in items:
+            path = item.get("path")
+            if not path:
+                continue
+
+            # Check stats
+            rating = self.stats_manager.get_rating(path)
+            is_favorite = self.stats_manager.is_favorite(path)
+            is_banned = self.stats_manager.is_banned(path)
+            views = self.stats_manager.data.get("wallpapers", {}).get(path, {}).get("views", 0)
+
+            # Categorize
+            if rating > 0 or is_favorite:
+                protected.append(item)
+            elif is_banned:
+                banned.append(item)
+            elif rating == 0 and views < 3:
+                low_priority.append((item, views, item.get("timestamp", 0)))
+            else:
+                normal.append((item, views, item.get("timestamp", 0)))
+
+        # Build removal list
+        to_remove = []
+
+        # 1. Remove banned first
+        to_remove.extend(banned[:num_to_remove])
+
+        # 2. Remove low priority (sort by views then timestamp)
+        if len(to_remove) < num_to_remove:
+            low_priority.sort(key=lambda x: (x[1], x[2]))  # Sort by views, then timestamp
+            remaining = num_to_remove - len(to_remove)
+            to_remove.extend([item for item, _, _ in low_priority[:remaining]])
+
+        # 3. Remove from normal pool if needed (oldest with lowest views)
+        if len(to_remove) < num_to_remove:
+            normal.sort(key=lambda x: (x[1], x[2]))  # Sort by views, then timestamp
+            remaining = num_to_remove - len(to_remove)
+            to_remove.extend([item for item, _, _ in normal[:remaining]])
+
+        print(f"[CACHE] Smart rotation: protecting {len(protected)} starred/favorites, "
+              f"removing {len([i for i in to_remove if i in banned])} banned, "
+              f"{len([i for i in to_remove if i not in banned])} low-priority")
+
+        return to_remove
 
     def store(self, source_path: str, metadata: Dict[str, str]) -> Optional[str]:
         if not os.path.exists(source_path):
@@ -72,7 +137,27 @@ class CacheManager:
                 }
             )
             self._index.setdefault("items", []).append(entry)
-            self._index["items"] = self._index["items"][-self.max_items :]
+
+            # Smart rotation: protect important wallpapers
+            items = self._index["items"]
+            if len(items) > self.max_items:
+                excess = len(items) - self.max_items
+                to_remove = self._smart_select_for_removal(items, excess)
+
+                # Remove files from disk
+                for item in to_remove:
+                    try:
+                        path = item.get("path")
+                        if path and os.path.exists(path):
+                            os.remove(path)
+                            print(f"[CACHE] Removed: {os.path.basename(path)}")
+                    except OSError as e:
+                        print(f"[WARNING] Failed to remove {path}: {e}")
+
+                # Remove from index
+                to_remove_paths = {item.get("path") for item in to_remove}
+                self._index["items"] = [item for item in items if item.get("path") not in to_remove_paths]
+
             self._save()
             return target_path
 

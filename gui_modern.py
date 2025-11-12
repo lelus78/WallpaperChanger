@@ -50,7 +50,10 @@ class ModernWallpaperGUI:
         self.root.grid_columnconfigure(1, weight=1)
         self.root.grid_rowconfigure(0, weight=1)
 
-        # Initialize cache manager
+        # Initialize statistics manager first (needed by cache manager)
+        self.stats_manager = StatisticsManager()
+
+        # Initialize cache manager with stats_manager for smart rotation
         cache_dir = CacheSettings.get("directory") or os.path.join(
             os.path.expanduser("~"), "WallpaperChangerCache"
         )
@@ -58,6 +61,7 @@ class ModernWallpaperGUI:
             cache_dir,
             max_items=int(CacheSettings.get("max_items", 60)),
             enable_rotation=bool(CacheSettings.get("enable_offline_rotation", True)),
+            stats_manager=self.stats_manager,  # Pass stats_manager for smart cache rotation
         )
 
         # Thumbnail cache
@@ -65,9 +69,6 @@ class ModernWallpaperGUI:
 
         # Image references to prevent garbage collection
         self.image_references = []
-
-        # Statistics manager
-        self.stats_manager = StatisticsManager()
         # Clean up placeholder paths from previous versions
         self.stats_manager.cleanup_placeholder_paths()
 

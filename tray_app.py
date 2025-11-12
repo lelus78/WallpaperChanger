@@ -79,7 +79,7 @@ class TrayApp:
             pystray.MenuItem("Next From Cache", self._next_from_cache, enabled=self._cache_available),
             pystray.MenuItem("Open Cache Folder", self._open_cache),
             pystray.Menu.SEPARATOR,
-            pystray.MenuItem("Open Settings GUI", self._open_settings_gui),
+            pystray.MenuItem("Open Dashboard", self._open_settings_gui),
             pystray.Menu.SEPARATOR,
             pystray.MenuItem("Exit", self._quit),
         )
@@ -98,30 +98,15 @@ class TrayApp:
             self.controller.cache_manager.open_folder()
 
     def _open_settings_gui(self, icon: pystray.Icon, item: pystray.MenuItem) -> None:
-        """Open the settings GUI"""
+        """Open the modern GUI"""
         try:
             script_dir = os.path.dirname(os.path.abspath(__file__))
-            gui_signal = os.path.join(script_dir, "gui_restore.signal")
 
-            # Check if GUI is already running by looking for the signal file monitoring
-            # If GUI is running, just create the restore signal
-            # Otherwise, launch a new instance
-            gui_pid_file = os.path.join(script_dir, "gui_config.pid")
-
-            if os.path.exists(gui_pid_file):
-                # GUI might be running (minimized), try to restore it
-                try:
-                    with open(gui_signal, 'w') as f:
-                        f.write('restore')
-                    return
-                except Exception:
-                    pass
-
-            # GUI not running or signal failed, launch new instance
-            gui_script = os.path.join(script_dir, "gui_config.py")
+            # Use the modern GUI instead of the old config GUI
+            gui_script = os.path.join(script_dir, "gui_modern.py")
             subprocess.Popen(["pythonw", gui_script], shell=False)
         except Exception as e:
-            print(f"Failed to open settings GUI: {e}")
+            print(f"Failed to open GUI: {e}")
 
     def _toggle_scheduler(self, icon: pystray.Icon, item: pystray.MenuItem) -> None:
         self.controller.scheduler.toggle()

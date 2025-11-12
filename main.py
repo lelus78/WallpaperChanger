@@ -934,8 +934,9 @@ class WallpaperApp:
                     self.logger.info("Per-monitor API unavailable; composing a span wallpaper instead.")
                     results.extend(self._apply_span(tasks))
                 else:
-                    line, used_provider = self._process_single(tasks[0])
+                    line, used_provider, cached_path, metadata = self._process_single(tasks[0])
                     results.append((line, used_provider))
+                    cached_paths_and_metadata.append((cached_path, metadata))
             finally:
                 if manager:
                     manager.close()
@@ -1213,12 +1214,12 @@ class WallpaperApp:
         manager.set_wallpaper(task["monitor"]["id"], bmp_path)
         return f"{task['label']}: {source_info}", metadata["provider"], cached_path, metadata
 
-    def _process_single(self, task: Dict) -> Tuple[str, str]:
+    def _process_single(self, task: Dict) -> Tuple[str, str, str, Dict]:
         url, source_info, metadata = self._resolve_wallpaper(task)
         download_path = os.path.join(os.path.expanduser("~"), SINGLE_DOWNLOAD_NAME)
         self._download_wallpaper(url, download_path)
         cached_path = self.cache_manager.store(download_path, metadata) or download_path
-        
+
         self._write_current_wallpaper_info(cached_path, metadata)
 
         if cached_path != download_path:
@@ -1227,7 +1228,7 @@ class WallpaperApp:
         bmp_path = os.path.join(os.path.expanduser("~"), SINGLE_BMP_NAME)
         self._convert_to_bmp(cached_path, bmp_path, task["target_size"])
         self._apply_legacy_wallpaper(bmp_path)
-        return f"{task['label']}: {source_info}", metadata["provider"]
+        return f"{task['label']}: {source_info}", metadata["provider"], cached_path, metadata
 
     def _apply_span(self, tasks: List[Dict]) -> List[Tuple[str, str]]:
         home_dir = os.path.expanduser("~")

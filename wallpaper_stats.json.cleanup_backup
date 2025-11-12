@@ -1,0 +1,56 @@
+{
+  "wallpapers": {
+    "C:\\Users\\lelus\\WallpaperChangerCache\\1762971525967_2031.jpg": {
+      "views": 1,
+      "last_viewed": "2025-11-12T19:18:48.504723",
+      "rating": 0,
+      "favorite": false,
+      "tags": [
+        "landscape"
+      ],
+      "provider": "pexels"
+    },
+    "C:\\Users\\lelus\\WallpaperChangerCache\\1762971590625_3861.jpg": {
+      "views": 1,
+      "last_viewed": "2025-11-12T19:19:52.583538",
+      "rating": 0,
+      "favorite": false,
+      "tags": [
+        "vibrant",
+        "vegetables",
+        "dips",
+        "creating",
+        "landscape"
+      ],
+      "provider": "pexels"
+    }
+  },
+  "history": [
+    {
+      "timestamp": "2025-11-12T19:18:48.504723",
+      "path": "C:\\Users\\lelus\\WallpaperChangerCache\\1762971525967_2031.jpg",
+      "provider": "pexels",
+      "action": "startup"
+    },
+    {
+      "timestamp": "2025-11-12T19:19:52.583538",
+      "path": "C:\\Users\\lelus\\WallpaperChangerCache\\1762971590625_3861.jpg",
+      "provider": "pexels",
+      "action": "scheduler"
+    }
+  ],
+  "daily_stats": {
+    "2025-11-12": {
+      "changes": 2,
+      "providers": {
+        "pexels": 2
+      }
+    }
+  },
+  "banned": [],
+  "preferences": {
+    "total_changes": 2,
+    "favorite_provider": null,
+    "favorite_time": null
+  }
+}

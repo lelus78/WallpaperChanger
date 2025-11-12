@@ -251,6 +251,9 @@ class ModernWallpaperGUI:
 
     def _show_wallpapers_view(self):
         """Show wallpapers gallery view"""
+        # Clean up orphaned statistics before showing wallpapers
+        self._cleanup_orphaned_stats()
+
         # Create container for this view
         view_container = ctk.CTkFrame(self.content_container, fg_color="transparent")
         view_container.pack(fill="both", expand=True)
@@ -800,16 +803,35 @@ class ModernWallpaperGUI:
             elif view == "Logs":
                 self._show_logs_view()
 
-    def _refresh_home_data(self):
-        """Refresh Home view wallpapers without recreating entire view"""
+    def _cleanup_orphaned_stats(self):
+        """Clean up statistics and cache index for wallpapers that no longer exist"""
+        import os
+
         # Reload cache manager index from disk
         self.cache_manager._load()
+
+        # First, clean up cache index - remove entries for files that don't exist
+        cache_items = self.cache_manager._index.get('items', [])
+        valid_cache_items = []
+        removed_from_cache = 0
+
+        for item in cache_items:
+            path = item.get('path')
+            if path and os.path.exists(path):
+                valid_cache_items.append(item)
+            else:
+                removed_from_cache += 1
+
+        if removed_from_cache > 0:
+            self.cache_manager._index['items'] = valid_cache_items
+            self.cache_manager._save()
+            print(f"[CLEANUP] Removed {removed_from_cache} missing files from cache index")
 
         # Reload statistics manager data
         self.stats_manager.data = self.stats_manager._load_data()
 
         # Clean up statistics for wallpapers that no longer exist in cache
-        cached_paths = {item.get('path') for item in self.cache_manager._index.get('items', [])}
+        cached_paths = {item.get('path') for item in valid_cache_items}
         stats_wallpapers = self.stats_manager.data.get('wallpapers', {})
 
         # Remove stats for wallpapers not in cache anymore
@@ -820,7 +842,15 @@ class ModernWallpaperGUI:
         # Save cleaned statistics
         if paths_to_remove:
             self.stats_manager._save_data()
-            print(f"[REFRESH] Cleaned {len(paths_to_remove)} orphaned wallpaper stats")
+            print(f"[CLEANUP] Removed {len(paths_to_remove)} orphaned wallpaper stats and tags")
+
+        total_removed = removed_from_cache + len(paths_to_remove)
+        return total_removed
+
+    def _refresh_home_data(self):
+        """Refresh Home view wallpapers without recreating entire view"""
+        # Clean up orphaned statistics
+        self._cleanup_orphaned_stats()
 
         # Clear image references to allow new images to load
         self.image_references.clear()

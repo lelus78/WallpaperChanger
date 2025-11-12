@@ -1,0 +1,32 @@
+{
+  "wallpapers": {},
+  "history": [
+    {
+      "timestamp": "2025-11-10T15:16:05.473871",
+      "path": "C:\\Users\\EmanueleO\\WallpaperChangerCache\\1762779758252_6400.jpg",
+      "provider": "reddit",
+      "action": "manual"
+    }
+  ],
+  "daily_stats": {
+    "2025-11-10": {
+      "changes": 56,
+      "providers": {
+        "wallhaven": 12,
+        "pexels": 25,
+        "reddit": 19
+      }
+    }
+  },
+  "banned": [
+    "C:\\Users\\EmanueleO\\WallpaperChangerCache\\1762440338377_6185.jpg",
+    "C:\\Users\\EmanueleO\\WallpaperChangerCache\\1762766348167_5270.jpg",
+    "C:\\Users\\EmanueleO\\WallpaperChangerCache\\1762773811450_8398.jpg",
+    "C:\\Users\\EmanueleO\\WallpaperChangerCache\\1762445749722_5997.jpg"
+  ],
+  "preferences": {
+    "total_changes": 56,
+    "favorite_provider": null,
+    "favorite_time": null
+  }
+}

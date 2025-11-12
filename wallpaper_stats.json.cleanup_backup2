@@ -1,0 +1,113 @@
+{
+  "wallpapers": {
+    "C:\\Users\\lelus\\WallpaperChangerCache\\1762971525967_2031.jpg": {
+      "views": 1,
+      "last_viewed": "2025-11-12T19:18:48.504723",
+      "rating": 0,
+      "favorite": false,
+      "tags": [
+        "landscape"
+      ],
+      "provider": "pexels"
+    },
+    "C:\\Users\\lelus\\WallpaperChangerCache\\1762971590625_3861.jpg": {
+      "views": 1,
+      "last_viewed": "2025-11-12T19:19:52.583538",
+      "rating": 0,
+      "favorite": false,
+      "tags": [
+        "vibrant",
+        "vegetables",
+        "dips",
+        "creating",
+        "landscape"
+      ],
+      "provider": "pexels"
+    },
+    "C:\\Users\\lelus\\WallpaperChangerCache\\1762973670346_2916.jpg": {
+      "views": 1,
+      "last_viewed": "2025-11-12T19:54:33.120391",
+      "rating": 0,
+      "favorite": false,
+      "tags": [
+        "r/wallpapers"
+      ],
+      "provider": "reddit"
+    },
+    "C:\\Users\\lelus\\WallpaperChangerCache\\1762973697677_4353.jpg": {
+      "views": 1,
+      "last_viewed": "2025-11-12T19:55:01.363398",
+      "rating": 0,
+      "favorite": false,
+      "tags": [
+        "kayaking",
+        "mangroves,",
+        "ranong,",
+        "thailand",
+        "landscape"
+      ],
+      "provider": "pexels"
+    },
+    "C:\\Users\\lelus\\WallpaperChangerCache\\1762973808119_6001.jpg": {
+      "views": 1,
+      "last_viewed": "2025-11-12T19:56:51.564165",
+      "rating": 0,
+      "favorite": false,
+      "tags": [
+        "view",
+        "from",
+        "driving",
+        "through",
+        "landscape"
+      ],
+      "provider": "pexels"
+    }
+  },
+  "history": [
+    {
+      "timestamp": "2025-11-12T19:18:48.504723",
+      "path": "C:\\Users\\lelus\\WallpaperChangerCache\\1762971525967_2031.jpg",
+      "provider": "pexels",
+      "action": "startup"
+    },
+    {
+      "timestamp": "2025-11-12T19:19:52.583538",
+      "path": "C:\\Users\\lelus\\WallpaperChangerCache\\1762971590625_3861.jpg",
+      "provider": "pexels",
+      "action": "scheduler"
+    },
+    {
+      "timestamp": "2025-11-12T19:54:33.120391",
+      "path": "C:\\Users\\lelus\\WallpaperChangerCache\\1762973670346_2916.jpg",
+      "provider": "reddit",
+      "action": "gui"
+    },
+    {
+      "timestamp": "2025-11-12T19:55:01.363398",
+      "path": "C:\\Users\\lelus\\WallpaperChangerCache\\1762973697677_4353.jpg",
+      "provider": "pexels",
+      "action": "scheduler"
+    },
+    {
+      "timestamp": "2025-11-12T19:56:51.564165",
+      "path": "C:\\Users\\lelus\\WallpaperChangerCache\\1762973808119_6001.jpg",
+      "provider": "pexels",
+      "action": "gui"
+    }
+  ],
+  "daily_stats": {
+    "2025-11-12": {
+      "changes": 5,
+      "providers": {
+        "pexels": 4,
+        "reddit": 1
+      }
+    }
+  },
+  "banned": [],
+  "preferences": {
+    "total_changes": 5,
+    "favorite_provider": null,
+    "favorite_time": null
+  }
+}

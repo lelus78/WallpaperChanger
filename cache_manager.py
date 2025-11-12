@@ -104,12 +104,19 @@ class CacheManager:
             return None
 
         with self._lock:
-            # Check for duplicates
+            # Check for duplicates using unique_id (preferred) or source_info (fallback)
+            unique_id = metadata.get("unique_id")
             source_info = metadata.get("source_info")
-            if source_info:
-                for item in self._index.get("items", []):
-                    if item.get("source_info") == source_info:
-                        return item.get("path")
+
+            for item in self._index.get("items", []):
+                # Check unique_id first (more reliable for same content from different sources)
+                if unique_id and item.get("unique_id") == unique_id:
+                    print(f"[CACHE] Duplicate detected (unique_id), reusing: {os.path.basename(item.get('path'))}")
+                    return item.get("path")
+                # Fallback to source_info for backwards compatibility
+                if source_info and item.get("source_info") == source_info:
+                    print(f"[CACHE] Duplicate detected (source_info), reusing: {os.path.basename(item.get('path'))}")
+                    return item.get("path")
 
             os.makedirs(self.directory, exist_ok=True)
             extension = os.path.splitext(source_path)[1] or ".jpg"

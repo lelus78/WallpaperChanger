@@ -1017,6 +1017,7 @@ class WallpaperApp:
         if not monitors:
             if manager:
                 manager.close()
+            self.logger.info("[CACHE] Using cached wallpaper (no monitors detected)")
             entry = self.cache_manager.get_random(banned_paths=banned_paths)
             if not entry:
                 return False
@@ -1026,6 +1027,7 @@ class WallpaperApp:
             return True
 
         if not manager:
+            self.logger.info("[CACHE] Using cached wallpapers for all monitors")
             entries = [
                 self.cache_manager.get_random(monitor_label=f"Monitor {idx + 1}", banned_paths=banned_paths)
                 or self.cache_manager.get_random(banned_paths=banned_paths)
@@ -1344,12 +1346,13 @@ class WallpaperApp:
         provider = task["provider"]
         query = task["query"]
         tags = []
+        unique_id = None
         if provider == PROVIDER_WALLHAVEN:
-            url, source_info, tags = self._fetch_wallhaven(task)
+            url, source_info, tags, unique_id = self._fetch_wallhaven(task)
         elif provider == PROVIDER_PEXELS:
-            url, source_info, tags = self._fetch_pexels(task)
+            url, source_info, tags, unique_id = self._fetch_pexels(task)
         elif provider == PROVIDER_REDDIT:
-            url, source_info, tags = self._fetch_reddit(task)
+            url, source_info, tags, unique_id = self._fetch_reddit(task)
         else:
             raise RuntimeError(f"Unsupported provider '{provider}'")
 
@@ -1359,6 +1362,7 @@ class WallpaperApp:
             "query": query,
             "monitor": task["label"],
             "source_info": source_info,
+            "unique_id": unique_id,  # Add unique identifier for better duplicate detection
             "tags": tags,
         }
         playlist_name = task.get("playlist")
@@ -1486,7 +1490,10 @@ class WallpaperApp:
         if "category" in choice:
             tags.append(choice["category"])
 
-        return choice["path"], source_info, tags
+        # Use wallhaven ID as unique identifier
+        unique_id = f"wallhaven:{choice.get('id')}" if choice.get('id') else None
+
+        return choice["path"], source_info, tags, unique_id
 
     def _fetch_reddit(self, task: Dict) -> Tuple[str, str]:
         settings = dict(task.get("reddit") or {})
@@ -1638,7 +1645,10 @@ class WallpaperApp:
         if "link_flair_text" in choice and choice.get("link_flair_text"):
             tags.append(choice["link_flair_text"])
 
-        return choice["url"], source_info, tags
+        # Use permalink as unique identifier (same post regardless of sort method)
+        unique_id = f"reddit:{permalink}" if permalink else None
+
+        return choice["url"], source_info, tags, unique_id
 
     def _fetch_pexels(self, task: Dict) -> Tuple[str, str]:
         if not normalize_string(PexelsApiKey):
@@ -1707,14 +1717,18 @@ class WallpaperApp:
         if filters.get("orientation"):
             tags.append(filters["orientation"])
 
-        return image_url, source_info, tags
+        # Use pexels ID as unique identifier
+        unique_id = f"pexels:{choice.get('id')}" if choice.get('id') else None
+
+        return image_url, source_info, tags, unique_id
 
     def _resolve_wallpaper(self, task: Dict) -> Tuple[str, str, Dict]:
         provider_candidates = task.get("provider_candidates", [task["provider"]])
-        
+
         for provider in provider_candidates:
             try:
                 task["provider"] = provider
+                self.logger.info(f"[DOWNLOAD] Fetching new wallpaper from {provider}...")
                 url, source_info, metadata = self._fetch_wallpaper(task)
                 metadata["provider"] = provider
                 return url, source_info, metadata

@@ -12,6 +12,7 @@ import tkinter as tk
 from cache_manager import CacheManager
 from config import CacheSettings
 from statistics_manager import StatisticsManager
+from smart_recommendations import SmartRecommendations
 import matplotlib
 matplotlib.use('TkAgg')  # Use TkAgg backend for embedding in tkinter
 from matplotlib.figure import Figure
@@ -82,6 +83,14 @@ class ModernWallpaperGUI:
         # View caching for performance
         self._view_cache = {}
 
+        # Smart Recommendations system (API key loaded from config)
+        from config import GeminiApiKey
+        self.recommendations = SmartRecommendations(
+            self.stats_manager,
+            self.cache_manager,
+            api_key=GeminiApiKey if GeminiApiKey else None
+        )
+
         # Main app process
         self.main_process = None
         self.pid_file = Path(__file__).parent / "wallpaperchanger.pid"
@@ -148,11 +157,12 @@ class ModernWallpaperGUI:
 
         # Navigation buttons with colored icons
         nav_items = [
-            ("Home", "●", "#FFD93D"),      # Yellow home icon
-            ("Wallpapers", "●", "#00e676"), # Green wallpapers icon
-            ("Duplicates", "●", "#ff9500"), # Orange duplicates icon
-            ("Settings", "●", "#89b4fa"),   # Blue settings icon
-            ("Logs", "●", "#ff6b81"),       # Red logs icon
+            ("Home", "●", "#FFD93D"),       # Yellow home icon
+            ("Wallpapers", "●", "#00e676"),  # Green wallpapers icon
+            ("Duplicates", "●", "#ff9500"),  # Orange duplicates icon
+            ("AI Assistant", "●", "#a78bfa"), # Purple AI icon
+            ("Settings", "●", "#89b4fa"),    # Blue settings icon
+            ("Logs", "●", "#ff6b81"),        # Red logs icon
         ]
 
         self.nav_buttons = []
@@ -284,45 +294,49 @@ class ModernWallpaperGUI:
         )
         title.grid(row=0, column=0, sticky="w", padx=10)
 
-        # Filter dropdown
+        # Filter frame - now with two rows for better organization
         filter_frame = ctk.CTkFrame(header, fg_color="transparent")
         filter_frame.grid(row=0, column=2, sticky="e", padx=10)
 
-        # Tag filter
+        # First row of filters
+        filter_row1 = ctk.CTkFrame(filter_frame, fg_color="transparent")
+        filter_row1.pack(side="top", fill="x", pady=(0, 5))
+
+        # Provider filter
         ctk.CTkLabel(
-            filter_frame,
-            text="Tag:",
+            filter_row1,
+            text="Provider:",
             text_color=self.COLORS['text_muted'],
             font=ctk.CTkFont(size=13)
-        ).pack(side="left", padx=(0, 10))
+        ).pack(side="left", padx=(0, 5))
 
-        # Create or reuse tag_filter_var to preserve selection
-        if not hasattr(self, 'tag_filter_var') or not self.tag_filter_var:
-            self.tag_filter_var = ctk.StringVar(value="All Tags")
+        # Create or reuse provider_filter_var
+        if not hasattr(self, 'provider_filter_var') or not self.provider_filter_var:
+            self.provider_filter_var = ctk.StringVar(value="All Providers")
 
-        # Get all unique tags
-        all_tags = self.stats_manager.get_all_tags()
-        tag_values = ["All Tags"] + sorted(all_tags)
-
-        tag_menu = ctk.CTkOptionMenu(
-            filter_frame,
-            variable=self.tag_filter_var,
-            values=tag_values if tag_values else ["All Tags"],
-            width=150,
+        provider_menu = ctk.CTkOptionMenu(
+            filter_row1,
+            variable=self.provider_filter_var,
+            values=["All Providers", "pexels", "reddit", "wallhaven"],
+            width=120,
             fg_color=self.COLORS['card_bg'],
             button_color=self.COLORS['accent'],
             button_hover_color=self.COLORS['sidebar_hover'],
             command=self._on_filter_change
         )
-        tag_menu.pack(side="left", padx=(0, 10))
+        provider_menu.pack(side="left", padx=(0, 10))
+
+        # Second row of filters
+        filter_row2 = ctk.CTkFrame(filter_frame, fg_color="transparent")
+        filter_row2.pack(side="top", fill="x")
 
         # Color filter dropdown
         ctk.CTkLabel(
-            filter_frame,
+            filter_row2,
             text="Color:",
             text_color=self.COLORS['text_muted'],
             font=ctk.CTkFont(size=13)
-        ).pack(side="left", padx=(0, 10))
+        ).pack(side="left", padx=(0, 5))
 
         # Create or reuse color_filter_var to preserve selection
         if not hasattr(self, 'color_filter_var') or not self.color_filter_var:
@@ -333,7 +347,7 @@ class ModernWallpaperGUI:
         color_values = ["All Colors"] + sorted(all_colors)
 
         color_menu = ctk.CTkOptionMenu(
-            filter_frame,
+            filter_row2,
             variable=self.color_filter_var,
             values=color_values if color_values else ["All Colors"],
             width=120,
@@ -349,7 +363,7 @@ class ModernWallpaperGUI:
             self.dominant_only_var = ctk.BooleanVar(value=False)
 
         dominant_checkbox = ctk.CTkCheckBox(
-            filter_frame,
+            filter_row2,
             text="Dominant only",
             variable=self.dominant_only_var,
             fg_color=self.COLORS['accent'],
@@ -361,18 +375,18 @@ class ModernWallpaperGUI:
 
         # Sort dropdown
         ctk.CTkLabel(
-            filter_frame,
+            filter_row2,
             text="Sort:",
             text_color=self.COLORS['text_muted'],
             font=ctk.CTkFont(size=13)
-        ).pack(side="left", padx=(0, 10))
+        ).pack(side="left", padx=(0, 5))
 
         # Create or reuse sort_var to preserve selection
         if not hasattr(self, 'sort_var') or not self.sort_var:
             self.sort_var = ctk.StringVar(value="Newest First")
 
         sort_menu = ctk.CTkOptionMenu(
-            filter_frame,
+            filter_row2,
             variable=self.sort_var,
             values=["Newest First", "Oldest First", "Highest Resolution", "Favorites Only", "Top Rated", "Banned Only"],
             width=170,
@@ -385,7 +399,7 @@ class ModernWallpaperGUI:
 
         # Refresh button to reload grid with current window size
         refresh_btn = ctk.CTkButton(
-            filter_frame,
+            filter_row2,
             text="🔄",
             font=ctk.CTkFont(size=16),
             width=35,
@@ -396,6 +410,23 @@ class ModernWallpaperGUI:
             command=self._load_wallpaper_grid
         )
         refresh_btn.pack(side="left")
+
+        # Tags filter button - opens popup dialog
+        tags_btn = ctk.CTkButton(
+            filter_row2,
+            text="Tags...",
+            width=80,
+            height=28,
+            fg_color=self.COLORS['card_bg'],
+            hover_color=self.COLORS['accent'],
+            corner_radius=8,
+            command=self._show_tags_dialog
+        )
+        tags_btn.pack(side="left", padx=(10, 0))
+
+        # Initialize selected tags set
+        if not hasattr(self, 'selected_tags'):
+            self.selected_tags = set()
 
         # Scrollable frame for wallpaper grid with faster scrolling
         self.wallpapers_scrollable_frame = ctk.CTkScrollableFrame(
@@ -452,13 +483,23 @@ class ModernWallpaperGUI:
 
         items = self.cache_manager.list_entries()
         sort_choice = self.sort_var.get() if hasattr(self, 'sort_var') else "Newest First"
-        tag_filter = self.tag_filter_var.get() if hasattr(self, 'tag_filter_var') else "All Tags"
+        provider_filter = self.provider_filter_var.get() if hasattr(self, 'provider_filter_var') else "All Providers"
         color_filter = self.color_filter_var.get() if hasattr(self, 'color_filter_var') else "All Colors"
 
-        # Apply tag filter first
-        if tag_filter and tag_filter != "All Tags":
-            wallpapers_with_tag = self.stats_manager.get_wallpapers_by_tag(tag_filter)
-            items = [item for item in items if item.get("path") in wallpapers_with_tag]
+        # Apply tag filter - match wallpapers that have ALL selected tags
+        if hasattr(self, 'selected_tags') and self.selected_tags:
+            def item_matches_tags(item):
+                item_path = item.get("path")
+                stats = self.stats_manager.data.get("wallpapers", {}).get(item_path, {})
+                item_tags = set(stats.get("tags", []))
+                # Item must have ALL selected tags (AND logic)
+                return self.selected_tags.issubset(item_tags)
+
+            items = [item for item in items if item_matches_tags(item)]
+
+        # Apply provider filter
+        if provider_filter and provider_filter != "All Providers":
+            items = [item for item in items if item.get("provider") == provider_filter]
 
         # Apply color filter
         if color_filter and color_filter != "All Colors":
@@ -798,6 +839,8 @@ class ModernWallpaperGUI:
                 self._show_wallpapers_view()
             elif view == "Duplicates":
                 self._show_duplicates_view()
+            elif view == "AI Assistant":
+                self._show_ai_assistant_view()
             elif view == "Settings":
                 self._show_settings_view()
             elif view == "Logs":
@@ -881,12 +924,155 @@ class ModernWallpaperGUI:
             else:
                 btn.configure(fg_color="transparent")
 
+    def _show_tags_dialog(self):
+        """Show a popup dialog to select tags for filtering"""
+        # Create popup dialog
+        dialog = ctk.CTkToplevel(self.root)
+        dialog.title("Filter by Tags")
+        dialog.geometry("500x600")
+        dialog.transient(self.root)
+        dialog.grab_set()
+
+        # Header
+        header = ctk.CTkLabel(
+            dialog,
+            text="Select tags to filter wallpapers",
+            font=ctk.CTkFont(size=16, weight="bold"),
+            text_color=self.COLORS['text_light']
+        )
+        header.pack(pady=20, padx=20)
+
+        # Scrollable frame for tag checkboxes
+        scroll_frame = ctk.CTkScrollableFrame(
+            dialog,
+            fg_color=self.COLORS['card_bg'],
+            corner_radius=10
+        )
+        scroll_frame.pack(fill="both", expand=True, padx=20, pady=(0, 20))
+
+        # Track checkbox variables and widgets
+        tag_vars = {}
+        tag_checkboxes = {}
+
+        def get_available_tags():
+            """Get tags that are available in currently filtered wallpapers"""
+            # Get current filters
+            items = self.cache_manager.list_entries()
+            provider_filter = self.provider_filter_var.get() if hasattr(self, 'provider_filter_var') else "All Providers"
+            color_filter = self.color_filter_var.get() if hasattr(self, 'color_filter_var') else "All Colors"
+
+            # Apply current tag filter (excluding the tag we're potentially adding)
+            if hasattr(self, 'selected_tags') and self.selected_tags:
+                def item_matches_tags(item):
+                    item_path = item.get("path")
+                    stats = self.stats_manager.data.get("wallpapers", {}).get(item_path, {})
+                    item_tags = set(stats.get("tags", []))
+                    return self.selected_tags.issubset(item_tags)
+                items = [item for item in items if item_matches_tags(item)]
+
+            # Apply provider filter
+            if provider_filter and provider_filter != "All Providers":
+                items = [item for item in items if item.get("provider") == provider_filter]
+
+            # Apply color filter
+            if color_filter and color_filter != "All Colors":
+                dominant_only = self.dominant_only_var.get() if hasattr(self, 'dominant_only_var') else False
+                if dominant_only:
+                    items = [item for item in items if color_filter == item.get("primary_color")]
+                else:
+                    items = [item for item in items
+                            if color_filter in item.get("color_categories", []) or
+                               color_filter == item.get("primary_color")]
+
+            # Count tags in filtered items
+            tag_counts = {}
+            for item in items:
+                item_path = item.get("path")
+                stats = self.stats_manager.data.get("wallpapers", {}).get(item_path, {})
+                for tag in stats.get("tags", []):
+                    tag_counts[tag] = tag_counts.get(tag, 0) + 1
+
+            return tag_counts
+
+        def rebuild_tag_list():
+            """Rebuild the tag checkbox list with currently available tags"""
+            # Clear existing checkboxes
+            for widget in scroll_frame.winfo_children():
+                widget.destroy()
+
+            # Get available tags
+            tag_counts = get_available_tags()
+            sorted_tags = sorted(tag_counts.items(), key=lambda x: (-x[1], x[0].lower()))
+
+            # Recreate checkboxes
+            for tag, count in sorted_tags:
+                if tag not in tag_vars:
+                    tag_vars[tag] = ctk.BooleanVar(value=tag in self.selected_tags)
+                else:
+                    # Update value if tag already exists
+                    tag_vars[tag].set(tag in self.selected_tags)
+
+                checkbox = ctk.CTkCheckBox(
+                    scroll_frame,
+                    text=f"{tag} ({count})",
+                    variable=tag_vars[tag],
+                    fg_color=self.COLORS['accent'],
+                    hover_color=self.COLORS['sidebar_hover'],
+                    font=ctk.CTkFont(size=13),
+                    command=lambda t=tag: on_tag_toggle(t)
+                )
+                checkbox.pack(anchor="w", padx=10, pady=5)
+                tag_checkboxes[tag] = checkbox
+
+        # Helper function to update filters in real-time
+        def on_tag_toggle(tag):
+            # Update selected tags from current checkbox states
+            self.selected_tags = {t for t, var in tag_vars.items() if var.get()}
+            # Reload wallpaper grid immediately
+            self._load_wallpaper_grid()
+            # Rebuild tag list to show only available tags
+            rebuild_tag_list()
+
+        # Initial build of tag list
+        rebuild_tag_list()
+
+        # Buttons frame
+        buttons_frame = ctk.CTkFrame(dialog, fg_color="transparent")
+        buttons_frame.pack(fill="x", padx=20, pady=(0, 20))
+
+        # Clear all button - now with real-time update
+        def clear_all():
+            # Update filters immediately
+            self.selected_tags = set()
+            self._load_wallpaper_grid()
+            # Rebuild tag list to show all available tags
+            rebuild_tag_list()
+
+        clear_btn = ctk.CTkButton(
+            buttons_frame,
+            text="Clear All",
+            fg_color=self.COLORS['card_bg'],
+            hover_color=self.COLORS['sidebar_hover'],
+            command=clear_all
+        )
+        clear_btn.pack(side="left", padx=(0, 10))
+
+        # Close button (no longer need Apply since changes are real-time)
+        close_btn = ctk.CTkButton(
+            buttons_frame,
+            text="Close",
+            fg_color=self.COLORS['accent'],
+            hover_color=self.COLORS['sidebar_hover'],
+            command=dialog.destroy
+        )
+        close_btn.pack(side="right")
+
     def _on_sort_change(self, choice: str):
         """Handle sort change and filter"""
         self._load_wallpaper_grid()
 
     def _on_filter_change(self, choice: str = None):
-        """Handle tag filter change"""
+        """Handle filter change"""
         self._load_wallpaper_grid()
 
     def _refresh_tag_filter(self):
@@ -2585,6 +2771,15 @@ class ModernWallpaperGUI:
         """Show monitor selection dialog and apply wallpaper"""
         self._show_monitor_selection_dialog(item)
 
+    def _set_wallpaper_from_cache(self, wallpaper_path: str):
+        """Helper method to apply wallpaper from path"""
+        # Find the item in cache by path
+        for item in self.cache_manager.list_entries():
+            if item.get("path") == wallpaper_path:
+                self._apply_wallpaper(item)
+                return
+        self.show_toast("Error", "Wallpaper not found in cache")
+
     def _toggle_favorite(self, wallpaper_path: str, button: ctk.CTkButton):
         """Toggle favorite status for a wallpaper"""
         is_fav = self.stats_manager.toggle_favorite(wallpaper_path)
@@ -3098,6 +3293,1113 @@ class ModernWallpaperGUI:
         except Exception as e:
             viewer.destroy()
             self._show_toast(f"Error loading image: {str(e)}", error=True)
+
+    def _show_ai_assistant_view(self):
+        """Show AI Assistant view with Smart Recommendations"""
+        # Create container for this view (following same pattern as other views)
+        view_container = ctk.CTkFrame(self.content_container, fg_color="transparent")
+        view_container.pack(fill="both", expand=True)
+        self._view_cache["AI Assistant"] = view_container
+
+        # Create scrollable container inside view
+        scroll_container = ctk.CTkScrollableFrame(
+            view_container,
+            fg_color="transparent"
+        )
+        scroll_container.pack(fill="both", expand=True, padx=30, pady=20)
+
+        # Header
+        header = ctk.CTkLabel(
+            scroll_container,
+            text="AI Assistant",
+            font=ctk.CTkFont(size=28, weight="bold"),
+            text_color=self.COLORS['text_light']
+        )
+        header.pack(anchor="w", pady=(0, 10))
+
+        subtitle = ctk.CTkLabel(
+            scroll_container,
+            text="AI-powered recommendations and suggestions",
+            font=ctk.CTkFont(size=14),
+            text_color=self.COLORS['text_muted']
+        )
+        subtitle.pack(anchor="w", pady=(0, 30))
+
+        # API Key Section
+        api_section = ctk.CTkFrame(
+            scroll_container,
+            fg_color=self.COLORS['card_bg'],
+            corner_radius=12
+        )
+        api_section.pack(fill="x", pady=(0, 20))
+
+        api_header = ctk.CTkLabel(
+            api_section,
+            text="Google Gemini API Key",
+            font=ctk.CTkFont(size=16, weight="bold"),
+            text_color=self.COLORS['text_light']
+        )
+        api_header.pack(anchor="w", padx=20, pady=(20, 10))
+
+        api_info = ctk.CTkLabel(
+            api_section,
+            text="Get your free API key at https://makersuite.google.com/app/apikey",
+            font=ctk.CTkFont(size=12),
+            text_color=self.COLORS['text_muted']
+        )
+        api_info.pack(anchor="w", padx=20, pady=(0, 15))
+
+        # API Key Entry
+        api_frame = ctk.CTkFrame(api_section, fg_color="transparent")
+        api_frame.pack(fill="x", padx=20, pady=(0, 15))
+
+        current_key = self.recommendations.api_key or ""
+        api_entry = ctk.CTkEntry(
+            api_frame,
+            placeholder_text="Enter your Gemini API key here...",
+            width=400,
+            height=35,
+            fg_color=self.COLORS['main_bg'],
+            border_color=self.COLORS['accent']
+        )
+        api_entry.pack(side="left", padx=(0, 10))
+        if current_key:
+            api_entry.insert(0, current_key)
+
+        def save_api_key():
+            key = api_entry.get().strip()
+            if key:
+                if self.recommendations.set_api_key(key):
+                    # Save to .env file
+                    try:
+                        env_path = Path(__file__).parent / '.env'
+                        env_lines = []
+                        if env_path.exists():
+                            with open(env_path, 'r', encoding='utf-8') as f:
+                                env_lines = f.readlines()
+
+                        # Update or add GEMINI_API_KEY
+                        new_env_lines = []
+                        key_found = False
+                        for line in env_lines:
+                            if line.startswith('GEMINI_API_KEY='):
+                                new_env_lines.append(f'GEMINI_API_KEY={key}\n')
+                                key_found = True
+                            else:
+                                new_env_lines.append(line)
+
+                        if not key_found:
+                            new_env_lines.append(f'GEMINI_API_KEY={key}\n')
+
+                        with open(env_path, 'w', encoding='utf-8') as f:
+                            f.writelines(new_env_lines)
+
+                        self.show_toast("Success", "API Key saved successfully!")
+                        # Refresh recommendations
+                        self._navigate("AI Assistant")
+                    except Exception as e:
+                        self.show_toast("Error", f"Failed to save API key: {e}")
+                else:
+                    self.show_toast("Error", "Invalid API Key. Please check and try again.")
+            else:
+                self.show_toast("Error", "Please enter an API key")
+
+        save_btn = ctk.CTkButton(
+            api_frame,
+            text="Save API Key",
+            width=120,
+            height=35,
+            fg_color=self.COLORS['accent'],
+            hover_color=self.COLORS['sidebar_hover'],
+            command=save_api_key
+        )
+        save_btn.pack(side="left")
+
+        # Status indicator
+        status_text = "✓ API Key Configured" if self.recommendations.model else "⚠ API Key Required"
+        status_color = self.COLORS['accent'] if self.recommendations.model else self.COLORS['warning']
+        status_label = ctk.CTkLabel(
+            api_section,
+            text=status_text,
+            font=ctk.CTkFont(size=12),
+            text_color=status_color
+        )
+        status_label.pack(anchor="w", padx=20, pady=(0, 20))
+
+        # Smart Recommendations Section
+        if self.recommendations.model or True:  # Show even without API (basic recommendations)
+            recs_section = ctk.CTkFrame(
+                scroll_container,
+                fg_color=self.COLORS['card_bg'],
+                corner_radius=12
+            )
+            recs_section.pack(fill="both", expand=True, pady=(0, 20))
+
+            recs_header_frame = ctk.CTkFrame(recs_section, fg_color="transparent")
+            recs_header_frame.pack(fill="x", padx=20, pady=(20, 15))
+
+            recs_header = ctk.CTkLabel(
+                recs_header_frame,
+                text="Smart Recommendations",
+                font=ctk.CTkFont(size=18, weight="bold"),
+                text_color=self.COLORS['text_light']
+            )
+            recs_header.pack(side="left")
+
+            refresh_btn = ctk.CTkButton(
+                recs_header_frame,
+                text="↻ Refresh",
+                width=100,
+                height=30,
+                fg_color=self.COLORS['accent'],
+                hover_color=self.COLORS['sidebar_hover'],
+                command=lambda: self._navigate("AI Assistant")
+            )
+            refresh_btn.pack(side="right")
+
+            # Get recommendations
+            recommendations = self.recommendations.get_recommendations(12)
+
+            if recommendations:
+                # Grid for recommended wallpapers
+                grid_frame = ctk.CTkFrame(recs_section, fg_color="transparent")
+                grid_frame.pack(fill="both", expand=True, padx=20, pady=(0, 20))
+
+                for idx, rec in enumerate(recommendations):
+                    row = idx // 3
+                    col = idx % 3
+
+                    self._create_wallpaper_card_ai(
+                        grid_frame,
+                        rec["item"],
+                        rec["score"],
+                        rec["reasons"],
+                        row=row,
+                        column=col
+                    )
+            else:
+                no_recs = ctk.CTkLabel(
+                    recs_section,
+                    text="Not enough data yet. Use the app more to get personalized recommendations!",
+                    font=ctk.CTkFont(size=14),
+                    text_color=self.COLORS['text_muted']
+                )
+                no_recs.pack(padx=20, pady=40)
+
+            # AI Suggestions (if API is configured)
+            if self.recommendations.model:
+                suggestions_section = ctk.CTkFrame(
+                    scroll_container,
+                    fg_color=self.COLORS['card_bg'],
+                    corner_radius=12
+                )
+                suggestions_section.pack(fill="x", pady=(0, 20))
+
+                sugg_header = ctk.CTkLabel(
+                    suggestions_section,
+                    text="AI-Generated Search Suggestions",
+                    font=ctk.CTkFont(size=16, weight="bold"),
+                    text_color=self.COLORS['text_light']
+                )
+                sugg_header.pack(anchor="w", padx=20, pady=(20, 15))
+
+                # Get AI suggestions
+                queries = self.recommendations.suggest_search_queries()
+
+                for query in queries:
+                    query_frame = ctk.CTkFrame(
+                        suggestions_section,
+                        fg_color=self.COLORS['main_bg'],
+                        corner_radius=8
+                    )
+                    query_frame.pack(fill="x", padx=20, pady=5)
+
+                    query_label = ctk.CTkLabel(
+                        query_frame,
+                        text=f"💡 {query}",
+                        font=ctk.CTkFont(size=13),
+                        text_color=self.COLORS['text_light']
+                    )
+                    query_label.pack(side="left", padx=15, pady=10)
+
+                suggestions_section.pack_configure(pady=(0, 20))
+
+                # 🎭 AI MOOD DETECTION Section
+                mood_section = ctk.CTkFrame(
+                    scroll_container,
+                    fg_color=self.COLORS['card_bg'],
+                    corner_radius=12
+                )
+                mood_section.pack(fill="x", pady=(0, 20))
+
+                mood_header = ctk.CTkLabel(
+                    mood_section,
+                    text="🎭 AI Mood Detection",
+                    font=ctk.CTkFont(size=16, weight="bold"),
+                    text_color=self.COLORS['text_light']
+                )
+                mood_header.pack(anchor="w", padx=20, pady=(20, 10))
+
+                mood_btn = ctk.CTkButton(
+                    mood_section,
+                    text="Detect My Current Mood",
+                    fg_color=self.COLORS['accent'],
+                    hover_color=self.COLORS['sidebar_hover'],
+                    command=lambda: self._detect_mood_ai()
+                )
+                mood_btn.pack(padx=20, pady=(0, 20))
+
+                # 💬 AI NATURAL LANGUAGE SEARCH Section
+                search_section = ctk.CTkFrame(
+                    scroll_container,
+                    fg_color=self.COLORS['card_bg'],
+                    corner_radius=12
+                )
+                search_section.pack(fill="x", pady=(0, 20))
+
+                search_header = ctk.CTkLabel(
+                    search_section,
+                    text="💬 AI Natural Language Search",
+                    font=ctk.CTkFont(size=16, weight="bold"),
+                    text_color=self.COLORS['text_light']
+                )
+                search_header.pack(anchor="w", padx=20, pady=(20, 10))
+
+                search_info = ctk.CTkLabel(
+                    search_section,
+                    text="Search using conversational language (e.g., 'something relaxing for evening')",
+                    font=ctk.CTkFont(size=12),
+                    text_color=self.COLORS['text_muted']
+                )
+                search_info.pack(anchor="w", padx=20, pady=(0, 10))
+
+                search_frame = ctk.CTkFrame(search_section, fg_color="transparent")
+                search_frame.pack(fill="x", padx=20, pady=(0, 20))
+
+                search_entry = ctk.CTkEntry(
+                    search_frame,
+                    placeholder_text="Describe what kind of wallpaper you want...",
+                    width=500,
+                    height=35,
+                    fg_color=self.COLORS['main_bg'],
+                    border_color=self.COLORS['accent']
+                )
+                search_entry.pack(side="left", padx=(0, 10))
+
+                search_btn = ctk.CTkButton(
+                    search_frame,
+                    text="🔍 AI Search",
+                    width=120,
+                    fg_color=self.COLORS['accent'],
+                    hover_color=self.COLORS['sidebar_hover'],
+                    command=lambda: self._ai_natural_search(search_entry.get())
+                )
+                search_btn.pack(side="left")
+
+                # 🔮 AI PREDICTIVE SELECTION Section
+                predict_section = ctk.CTkFrame(
+                    scroll_container,
+                    fg_color=self.COLORS['card_bg'],
+                    corner_radius=12
+                )
+                predict_section.pack(fill="x", pady=(0, 20))
+
+                predict_header = ctk.CTkLabel(
+                    predict_section,
+                    text="🔮 AI Predictive Selection",
+                    font=ctk.CTkFont(size=16, weight="bold"),
+                    text_color=self.COLORS['text_light']
+                )
+                predict_header.pack(anchor="w", padx=20, pady=(20, 10))
+
+                predict_info = ctk.CTkLabel(
+                    predict_section,
+                    text="Let AI predict the perfect wallpaper for you right now",
+                    font=ctk.CTkFont(size=12),
+                    text_color=self.COLORS['text_muted']
+                )
+                predict_info.pack(anchor="w", padx=20, pady=(0, 10))
+
+                predict_btn = ctk.CTkButton(
+                    predict_section,
+                    text="✨ Predict Perfect Wallpaper",
+                    fg_color=self.COLORS['accent'],
+                    hover_color=self.COLORS['sidebar_hover'],
+                    command=lambda: self._ai_predict_wallpaper()
+                )
+                predict_btn.pack(padx=20, pady=(0, 20))
+
+                # 🎨 STYLE SIMILARITY FINDER Section
+                similarity_section = ctk.CTkFrame(
+                    scroll_container,
+                    fg_color=self.COLORS['card_bg'],
+                    corner_radius=12
+                )
+                similarity_section.pack(fill="x", pady=(0, 20))
+
+                similarity_header = ctk.CTkLabel(
+                    similarity_section,
+                    text="🎨 Style Similarity Finder",
+                    font=ctk.CTkFont(size=16, weight="bold"),
+                    text_color=self.COLORS['text_light']
+                )
+                similarity_header.pack(anchor="w", padx=20, pady=(20, 10))
+
+                similarity_info = ctk.CTkLabel(
+                    similarity_section,
+                    text="Find wallpapers with similar artistic style to your favorites",
+                    font=ctk.CTkFont(size=12),
+                    text_color=self.COLORS['text_muted']
+                )
+                similarity_info.pack(anchor="w", padx=20, pady=(0, 10))
+
+                # Reference wallpaper selection
+                similarity_frame = ctk.CTkFrame(similarity_section, fg_color="transparent")
+                similarity_frame.pack(fill="x", padx=20, pady=(0, 15))
+
+                ref_label = ctk.CTkLabel(
+                    similarity_frame,
+                    text="Reference:",
+                    font=ctk.CTkFont(size=12),
+                    text_color=self.COLORS['text_muted']
+                )
+                ref_label.pack(side="left", padx=(0, 10))
+
+                self.ai_similarity_ref_label = ctk.CTkLabel(
+                    similarity_frame,
+                    text="No wallpaper selected",
+                    font=ctk.CTkFont(size=11),
+                    text_color=self.COLORS['text_muted']
+                )
+                self.ai_similarity_ref_label.pack(side="left")
+
+                similarity_btn_frame = ctk.CTkFrame(similarity_section, fg_color="transparent")
+                similarity_btn_frame.pack(padx=20, pady=(0, 20))
+
+                select_ref_btn = ctk.CTkButton(
+                    similarity_btn_frame,
+                    text="📁 Select Reference Wallpaper",
+                    fg_color=self.COLORS['card_bg'],
+                    hover_color=self.COLORS['card_hover'],
+                    command=lambda: self._ai_select_reference_wallpaper()
+                )
+                select_ref_btn.pack(side="left", padx=(0, 10))
+
+                find_similar_btn = ctk.CTkButton(
+                    similarity_btn_frame,
+                    text="🔍 Find Similar Wallpapers",
+                    fg_color=self.COLORS['accent'],
+                    hover_color=self.COLORS['sidebar_hover'],
+                    command=lambda: self._ai_find_similar_wallpapers()
+                )
+                find_similar_btn.pack(side="left")
+
+                # 📝 AI WALLPAPER ANALYSIS Section
+                analysis_section = ctk.CTkFrame(
+                    scroll_container,
+                    fg_color=self.COLORS['card_bg'],
+                    corner_radius=12
+                )
+                analysis_section.pack(fill="x", pady=(0, 20))
+
+                analysis_header = ctk.CTkLabel(
+                    analysis_section,
+                    text="📝 AI Wallpaper Analysis",
+                    font=ctk.CTkFont(size=16, weight="bold"),
+                    text_color=self.COLORS['text_light']
+                )
+                analysis_header.pack(anchor="w", padx=20, pady=(20, 10))
+
+                analysis_info = ctk.CTkLabel(
+                    analysis_section,
+                    text="Get creative AI-generated descriptions and tag suggestions for any wallpaper",
+                    font=ctk.CTkFont(size=12),
+                    text_color=self.COLORS['text_muted']
+                )
+                analysis_info.pack(anchor="w", padx=20, pady=(0, 10))
+
+                # Selected wallpaper for analysis
+                analysis_frame = ctk.CTkFrame(analysis_section, fg_color="transparent")
+                analysis_frame.pack(fill="x", padx=20, pady=(0, 15))
+
+                analysis_label = ctk.CTkLabel(
+                    analysis_frame,
+                    text="Wallpaper:",
+                    font=ctk.CTkFont(size=12),
+                    text_color=self.COLORS['text_muted']
+                )
+                analysis_label.pack(side="left", padx=(0, 10))
+
+                self.ai_analysis_path_label = ctk.CTkLabel(
+                    analysis_frame,
+                    text="No wallpaper selected",
+                    font=ctk.CTkFont(size=11),
+                    text_color=self.COLORS['text_muted']
+                )
+                self.ai_analysis_path_label.pack(side="left")
+
+                analysis_btn_frame = ctk.CTkFrame(analysis_section, fg_color="transparent")
+                analysis_btn_frame.pack(padx=20, pady=(0, 20))
+
+                select_analysis_btn = ctk.CTkButton(
+                    analysis_btn_frame,
+                    text="📁 Select Wallpaper",
+                    fg_color=self.COLORS['card_bg'],
+                    hover_color=self.COLORS['card_hover'],
+                    command=lambda: self._ai_select_wallpaper_for_analysis()
+                )
+                select_analysis_btn.pack(side="left", padx=(0, 10))
+
+                analyze_btn = ctk.CTkButton(
+                    analysis_btn_frame,
+                    text="🤖 Analyze with AI",
+                    fg_color=self.COLORS['accent'],
+                    hover_color=self.COLORS['sidebar_hover'],
+                    command=lambda: self._ai_analyze_wallpaper()
+                )
+                analyze_btn.pack(side="left")
+
+    def _create_wallpaper_card_ai(self, parent, item: Dict[str, Any], score: float, reasons: List[str], row: int, column: int):
+        """Create a wallpaper card for AI recommendations with score and reasons"""
+        card = ctk.CTkFrame(
+            parent,
+            fg_color=self.COLORS['card_bg'],
+            corner_radius=12,
+            cursor="hand2"
+        )
+        card.grid(row=row, column=column, padx=10, pady=10, sticky="nsew")
+        parent.grid_columnconfigure(column, weight=1, uniform="cols")
+
+        # Bind click event to set wallpaper
+        path = item.get("path")
+        card.bind("<Button-1>", lambda e, p=path: self._set_wallpaper_from_cache(p))
+
+        try:
+            # Load and display thumbnail
+            img_path = Path(path)
+            if img_path.exists():
+                img = Image.open(img_path)
+                img.thumbnail((300, 200), Image.Resampling.LANCZOS)
+                photo = ImageTk.PhotoImage(img)
+
+                img_label = ctk.CTkLabel(card, image=photo, text="")
+                img_label.image = photo
+                img_label.pack(pady=(10, 5))
+                self.image_references.append(photo)
+
+                # Score badge
+                score_label = ctk.CTkLabel(
+                    card,
+                    text=f"Score: {score:.0f}%",
+                    font=ctk.CTkFont(size=11, weight="bold"),
+                    text_color=self.COLORS['warning'],
+                    fg_color=self.COLORS['main_bg'],
+                    corner_radius=6
+                )
+                score_label.pack(pady=5)
+
+                # Reasons (show top 2)
+                for reason in reasons[:2]:
+                    reason_label = ctk.CTkLabel(
+                        card,
+                        text=f"• {reason}",
+                        font=ctk.CTkFont(size=10),
+                        text_color=self.COLORS['text_muted'],
+                        wraplength=250
+                    )
+                    reason_label.pack(pady=2)
+
+        except Exception as e:
+            error_label = ctk.CTkLabel(
+                card,
+                text=f"Error loading\nimage",
+                font=ctk.CTkFont(size=12),
+                text_color=self.COLORS['text_muted']
+            )
+            error_label.pack(expand=True, pady=50)
+
+    def _detect_mood_ai(self):
+        """🎭 Detect current mood using AI"""
+        if not self.recommendations.model:
+            self.show_toast("Error", "Please configure Gemini API key first")
+            return
+
+        try:
+            # Show loading
+            self.show_toast("AI Assistant", "Analyzing your mood...")
+
+            # Get current weather if available
+            current_weather = None  # TODO: integrate with weather module
+
+            # Detect mood
+            mood_data = self.recommendations.detect_mood_and_suggest(current_weather)
+
+            # Create dialog to show results
+            mood_dialog = ctk.CTkToplevel(self.root)
+            mood_dialog.title("AI Mood Detection")
+            mood_dialog.geometry("500x400")
+            mood_dialog.transient(self.root)
+            mood_dialog.grab_set()
+
+            # Header
+            header = ctk.CTkLabel(
+                mood_dialog,
+                text=f"🎭 Current Mood: {mood_data['mood'].upper()}",
+                font=ctk.CTkFont(size=20, weight="bold"),
+                text_color=self.COLORS['accent']
+            )
+            header.pack(pady=(20, 10))
+
+            # Style
+            if mood_data.get('style'):
+                style_label = ctk.CTkLabel(
+                    mood_dialog,
+                    text=f"Recommended Style:\n{mood_data['style']}",
+                    font=ctk.CTkFont(size=14),
+                    text_color=self.COLORS['text_light'],
+                    wraplength=450
+                )
+                style_label.pack(pady=10)
+
+            # Reason
+            reason_label = ctk.CTkLabel(
+                mood_dialog,
+                text=mood_data['reason'],
+                font=ctk.CTkFont(size=12),
+                text_color=self.COLORS['text_muted']
+            )
+            reason_label.pack(pady=10)
+
+            # Queries
+            if mood_data.get('queries'):
+                queries_label = ctk.CTkLabel(
+                    mood_dialog,
+                    text="AI Suggested Searches:",
+                    font=ctk.CTkFont(size=14, weight="bold"),
+                    text_color=self.COLORS['text_light']
+                )
+                queries_label.pack(pady=(20, 10))
+
+                for query in mood_data['queries']:
+                    q_frame = ctk.CTkFrame(mood_dialog, fg_color=self.COLORS['card_bg'])
+                    q_frame.pack(fill="x", padx=40, pady=5)
+
+                    q_label = ctk.CTkLabel(
+                        q_frame,
+                        text=f"💡 {query}",
+                        font=ctk.CTkFont(size=12),
+                        text_color=self.COLORS['text_light']
+                    )
+                    q_label.pack(pady=8, padx=10)
+
+            # Close button
+            close_btn = ctk.CTkButton(
+                mood_dialog,
+                text="Close",
+                command=mood_dialog.destroy,
+                fg_color=self.COLORS['accent']
+            )
+            close_btn.pack(pady=20)
+
+        except Exception as e:
+            self.show_toast("Error", f"Mood detection failed: {str(e)}")
+
+    def _ai_natural_search(self, query: str):
+        """💬 Search using natural language"""
+        if not self.recommendations.model:
+            self.show_toast("Error", "Please configure Gemini API key first")
+            return
+
+        if not query or not query.strip():
+            self.show_toast("Error", "Please enter a search query")
+            return
+
+        try:
+            # Show loading
+            self.show_toast("AI Assistant", f"Searching for: {query}...")
+
+            # Perform AI search
+            results = self.recommendations.natural_language_search(query.strip())
+
+            if not results:
+                self.show_toast("AI Assistant", "No matching wallpapers found")
+                return
+
+            # Create dialog to show results
+            search_dialog = ctk.CTkToplevel(self.root)
+            search_dialog.title("AI Search Results")
+            search_dialog.geometry("900x700")
+            search_dialog.transient(self.root)
+            search_dialog.grab_set()
+
+            # Header
+            header = ctk.CTkLabel(
+                search_dialog,
+                text=f"🔍 Results for: '{query}'",
+                font=ctk.CTkFont(size=18, weight="bold"),
+                text_color=self.COLORS['text_light']
+            )
+            header.pack(pady=(20, 10))
+
+            # Scrollable frame for results
+            scroll_frame = ctk.CTkScrollableFrame(search_dialog, fg_color="transparent")
+            scroll_frame.pack(fill="both", expand=True, padx=20, pady=10)
+
+            # Display results
+            for idx, result in enumerate(results):
+                result_card = ctk.CTkFrame(scroll_frame, fg_color=self.COLORS['card_bg'])
+                result_card.pack(fill="x", pady=10)
+
+                # Reason
+                reason_label = ctk.CTkLabel(
+                    result_card,
+                    text=f"#{idx+1}: {result['reason']}",
+                    font=ctk.CTkFont(size=13),
+                    text_color=self.COLORS['text_light'],
+                    wraplength=800
+                )
+                reason_label.pack(anchor="w", padx=15, pady=10)
+
+                # Apply button
+                def make_search_apply_handler(path, dialog):
+                    def handler():
+                        self._set_wallpaper_from_cache(path)
+                        dialog.destroy()
+                    return handler
+
+                apply_btn = ctk.CTkButton(
+                    result_card,
+                    text="Apply This Wallpaper",
+                    command=make_search_apply_handler(result['item']['path'], search_dialog),
+                    fg_color=self.COLORS['accent']
+                )
+                apply_btn.pack(padx=15, pady=(0, 10))
+
+            # Close button
+            close_btn = ctk.CTkButton(
+                search_dialog,
+                text="Close",
+                command=search_dialog.destroy,
+                fg_color=self.COLORS['sidebar_hover']
+            )
+            close_btn.pack(pady=10)
+
+        except Exception as e:
+            self.show_toast("Error", f"AI search failed: {str(e)}")
+
+    def _ai_predict_wallpaper(self):
+        """🔮 Predict perfect wallpaper using AI"""
+        if not self.recommendations.model:
+            self.show_toast("Error", "Please configure Gemini API key first")
+            return
+
+        try:
+            # Show loading
+            self.show_toast("AI Assistant", "Predicting perfect wallpaper...")
+
+            # Get prediction
+            prediction = self.recommendations.predict_next_wallpaper()
+
+            if not prediction:
+                self.show_toast("AI Assistant", "Not enough data for prediction")
+                return
+
+            # Create dialog to show prediction
+            pred_dialog = ctk.CTkToplevel(self.root)
+            pred_dialog.title("AI Prediction")
+            pred_dialog.geometry("500x400")
+            pred_dialog.transient(self.root)
+            pred_dialog.grab_set()
+
+            # Header
+            header = ctk.CTkLabel(
+                pred_dialog,
+                text="🔮 AI Predicted Perfect Wallpaper",
+                font=ctk.CTkFont(size=18, weight="bold"),
+                text_color=self.COLORS['accent']
+            )
+            header.pack(pady=(20, 15))
+
+            # AI Prediction text
+            if prediction.get('ai_prediction'):
+                pred_text = ctk.CTkLabel(
+                    pred_dialog,
+                    text=f"AI thinks:\n\n\"{prediction['ai_prediction']}\"",
+                    font=ctk.CTkFont(size=13),
+                    text_color=self.COLORS['text_light'],
+                    wraplength=450
+                )
+                pred_text.pack(pady=15)
+
+            # Score
+            score_label = ctk.CTkLabel(
+                pred_dialog,
+                text=f"Match Score: {prediction['score']:.0f}%",
+                font=ctk.CTkFont(size=16, weight="bold"),
+                text_color=self.COLORS['warning']
+            )
+            score_label.pack(pady=10)
+
+            # Reasons
+            if prediction.get('reasons'):
+                reasons_text = "Why this wallpaper:\n" + "\n".join([f"• {r}" for r in prediction['reasons'][:3]])
+                reasons_label = ctk.CTkLabel(
+                    pred_dialog,
+                    text=reasons_text,
+                    font=ctk.CTkFont(size=12),
+                    text_color=self.COLORS['text_muted'],
+                    wraplength=450
+                )
+                reasons_label.pack(pady=10)
+
+            # Apply button
+            def apply_prediction():
+                self._set_wallpaper_from_cache(prediction['item']['path'])
+                pred_dialog.destroy()
+
+            apply_btn = ctk.CTkButton(
+                pred_dialog,
+                text="✨ Apply Predicted Wallpaper",
+                command=apply_prediction,
+                fg_color=self.COLORS['accent'],
+                height=40
+            )
+            apply_btn.pack(pady=20)
+
+            # Close button
+            close_btn = ctk.CTkButton(
+                pred_dialog,
+                text="Maybe Later",
+                command=pred_dialog.destroy,
+                fg_color=self.COLORS['sidebar_hover']
+            )
+            close_btn.pack(pady=(0, 20))
+
+        except Exception as e:
+            self.show_toast("Error", f"Prediction failed: {str(e)}")
+
+    def _ai_select_reference_wallpaper(self):
+        """📁 Select a reference wallpaper for similarity search"""
+        from tkinter import filedialog
+
+        # Open file dialog
+        file_path = filedialog.askopenfilename(
+            title="Select Reference Wallpaper",
+            initialdir=str(self.cache_manager.cache_dir),
+            filetypes=[
+                ("Image Files", "*.jpg *.jpeg *.png *.webp *.bmp"),
+                ("All Files", "*.*")
+            ]
+        )
+
+        if file_path:
+            self.ai_similarity_reference = file_path
+            filename = Path(file_path).name
+            self.ai_similarity_ref_label.configure(text=filename)
+            self.show_toast("AI Assistant", "Reference wallpaper selected")
+
+    def _ai_find_similar_wallpapers(self):
+        """🎨 Find similar wallpapers using AI style analysis"""
+        if not self.recommendations.model:
+            self.show_toast("Error", "Please configure Gemini API key first")
+            return
+
+        if not hasattr(self, 'ai_similarity_reference') or not self.ai_similarity_reference:
+            self.show_toast("Error", "Please select a reference wallpaper first")
+            return
+
+        try:
+            self.show_toast("AI Assistant", "Finding similar wallpapers...")
+
+            # Get similar wallpapers
+            similar = self.recommendations.get_similar_wallpapers(
+                self.ai_similarity_reference,
+                count=6
+            )
+
+            if not similar:
+                self.show_toast("AI Assistant", "No similar wallpapers found")
+                return
+
+            # Create dialog to show results
+            sim_dialog = ctk.CTkToplevel(self.root)
+            sim_dialog.title("🎨 Similar Wallpapers - AI Style Analysis")
+            sim_dialog.geometry("1000x700")
+            sim_dialog.configure(fg_color=self.COLORS['main_bg'])
+
+            # Header
+            header = ctk.CTkLabel(
+                sim_dialog,
+                text=f"Found {len(similar)} Similar Wallpapers",
+                font=ctk.CTkFont(size=18, weight="bold"),
+                text_color=self.COLORS['text_light']
+            )
+            header.pack(pady=(20, 5))
+
+            # AI explanation
+            if similar and 'similarity_reason' in similar[0]:
+                explanation_label = ctk.CTkLabel(
+                    sim_dialog,
+                    text=f"AI Analysis: {similar[0]['similarity_reason']}",
+                    font=ctk.CTkFont(size=12),
+                    text_color=self.COLORS['text_muted'],
+                    wraplength=900
+                )
+                explanation_label.pack(pady=(0, 10))
+
+            # Scrollable frame for results
+            scroll_frame = ctk.CTkScrollableFrame(sim_dialog, fg_color="transparent")
+            scroll_frame.pack(fill="both", expand=True, padx=20, pady=10)
+
+            # Display similar wallpapers in grid
+            for idx, result in enumerate(similar):
+                row = idx // 2
+                col = idx % 2
+
+                card = ctk.CTkFrame(scroll_frame, fg_color=self.COLORS['card_bg'], corner_radius=12)
+                card.grid(row=row, column=col, padx=10, pady=10, sticky="nsew")
+                scroll_frame.grid_columnconfigure(col, weight=1)
+
+                try:
+                    # Load thumbnail
+                    img_path = Path(result['item']['path'])
+                    if img_path.exists():
+                        img = Image.open(img_path)
+                        img.thumbnail((400, 250), Image.Resampling.LANCZOS)
+                        photo = ImageTk.PhotoImage(img)
+
+                        img_label = ctk.CTkLabel(card, image=photo, text="")
+                        img_label.image = photo
+                        img_label.pack(pady=10)
+                        self.image_references.append(photo)
+                except:
+                    pass
+
+                # Score
+                score_label = ctk.CTkLabel(
+                    card,
+                    text=f"Similarity: {result['score']:.0f}%",
+                    font=ctk.CTkFont(size=12, weight="bold"),
+                    text_color=self.COLORS['warning']
+                )
+                score_label.pack(pady=5)
+
+                # Matching tags
+                if result.get('matching_tags'):
+                    tags_text = "Similar: " + ", ".join(result['matching_tags'][:5])
+                    tags_label = ctk.CTkLabel(
+                        card,
+                        text=tags_text,
+                        font=ctk.CTkFont(size=10),
+                        text_color=self.COLORS['text_muted'],
+                        wraplength=380
+                    )
+                    tags_label.pack(pady=5)
+
+                # Apply button
+                def make_apply_handler(path, dialog):
+                    def handler():
+                        self._set_wallpaper_from_cache(path)
+                        dialog.destroy()
+                    return handler
+
+                apply_btn = ctk.CTkButton(
+                    card,
+                    text="Apply Wallpaper",
+                    command=make_apply_handler(result['item']['path'], sim_dialog),
+                    fg_color=self.COLORS['accent']
+                )
+                apply_btn.pack(pady=10)
+
+            # Close button
+            close_btn = ctk.CTkButton(
+                sim_dialog,
+                text="Close",
+                command=sim_dialog.destroy,
+                fg_color=self.COLORS['sidebar_hover']
+            )
+            close_btn.pack(pady=10)
+
+        except Exception as e:
+            self.show_toast("Error", f"Similarity search failed: {str(e)}")
+
+    def _ai_select_wallpaper_for_analysis(self):
+        """📁 Select a wallpaper for AI analysis"""
+        from tkinter import filedialog
+
+        # Open file dialog
+        file_path = filedialog.askopenfilename(
+            title="Select Wallpaper to Analyze",
+            initialdir=str(self.cache_manager.cache_dir),
+            filetypes=[
+                ("Image Files", "*.jpg *.jpeg *.png *.webp *.bmp"),
+                ("All Files", "*.*")
+            ]
+        )
+
+        if file_path:
+            self.ai_analysis_path = file_path
+            filename = Path(file_path).name
+            self.ai_analysis_path_label.configure(text=filename)
+            self.show_toast("AI Assistant", "Wallpaper selected for analysis")
+
+    def _ai_analyze_wallpaper(self):
+        """📝 Analyze wallpaper with AI and get creative description"""
+        if not self.recommendations.model:
+            self.show_toast("Error", "Please configure Gemini API key first")
+            return
+
+        if not hasattr(self, 'ai_analysis_path') or not self.ai_analysis_path:
+            self.show_toast("Error", "Please select a wallpaper first")
+            return
+
+        try:
+            self.show_toast("AI Assistant", "Analyzing wallpaper with AI...")
+
+            # Get tags for this wallpaper
+            wallpaper_path = Path(self.ai_analysis_path)
+            wallpaper_info = None
+
+            for item in self.cache_manager.cache_metadata:
+                if Path(item['path']) == wallpaper_path:
+                    wallpaper_info = item
+                    break
+
+            tags = wallpaper_info.get('tags', []) if wallpaper_info else []
+
+            # Analyze with AI
+            analysis = self.recommendations.analyze_wallpaper_with_ai(
+                str(wallpaper_path),
+                tags
+            )
+
+            # Create dialog to show results
+            analysis_dialog = ctk.CTkToplevel(self.root)
+            analysis_dialog.title("📝 AI Wallpaper Analysis")
+            analysis_dialog.geometry("800x700")
+            analysis_dialog.configure(fg_color=self.COLORS['main_bg'])
+
+            # Header
+            header = ctk.CTkLabel(
+                analysis_dialog,
+                text="🤖 AI Creative Analysis",
+                font=ctk.CTkFont(size=18, weight="bold"),
+                text_color=self.COLORS['text_light']
+            )
+            header.pack(pady=(20, 10))
+
+            # Scrollable content
+            scroll_frame = ctk.CTkScrollableFrame(analysis_dialog, fg_color="transparent")
+            scroll_frame.pack(fill="both", expand=True, padx=20, pady=10)
+
+            # Wallpaper preview
+            try:
+                img = Image.open(wallpaper_path)
+                img.thumbnail((700, 300), Image.Resampling.LANCZOS)
+                photo = ImageTk.PhotoImage(img)
+
+                img_label = ctk.CTkLabel(scroll_frame, image=photo, text="")
+                img_label.image = photo
+                img_label.pack(pady=10)
+                self.image_references.append(photo)
+            except:
+                pass
+
+            # Description
+            desc_frame = ctk.CTkFrame(scroll_frame, fg_color=self.COLORS['card_bg'])
+            desc_frame.pack(fill="x", pady=10)
+
+            desc_header = ctk.CTkLabel(
+                desc_frame,
+                text="✨ Creative Description:",
+                font=ctk.CTkFont(size=14, weight="bold"),
+                text_color=self.COLORS['text_light']
+            )
+            desc_header.pack(anchor="w", padx=15, pady=(15, 5))
+
+            desc_text = ctk.CTkLabel(
+                desc_frame,
+                text=analysis.get('description', 'No description available'),
+                font=ctk.CTkFont(size=12),
+                text_color=self.COLORS['text_muted'],
+                wraplength=700,
+                justify="left"
+            )
+            desc_text.pack(anchor="w", padx=15, pady=(0, 15))
+
+            # Mood & Style
+            info_frame = ctk.CTkFrame(scroll_frame, fg_color=self.COLORS['card_bg'])
+            info_frame.pack(fill="x", pady=10)
+
+            mood_label = ctk.CTkLabel(
+                info_frame,
+                text=f"🎭 Mood: {analysis.get('mood', 'N/A')}",
+                font=ctk.CTkFont(size=13),
+                text_color=self.COLORS['text_light']
+            )
+            mood_label.pack(anchor="w", padx=15, pady=(15, 5))
+
+            style_label = ctk.CTkLabel(
+                info_frame,
+                text=f"🎨 Style: {analysis.get('style', 'N/A')}",
+                font=ctk.CTkFont(size=13),
+                text_color=self.COLORS['text_light']
+            )
+            style_label.pack(anchor="w", padx=15, pady=(0, 15))
+
+            # Suggested tags
+            if analysis.get('suggested_tags'):
+                tags_frame = ctk.CTkFrame(scroll_frame, fg_color=self.COLORS['card_bg'])
+                tags_frame.pack(fill="x", pady=10)
+
+                tags_header = ctk.CTkLabel(
+                    tags_frame,
+                    text="🏷️ AI Suggested Tags:",
+                    font=ctk.CTkFont(size=14, weight="bold"),
+                    text_color=self.COLORS['text_light']
+                )
+                tags_header.pack(anchor="w", padx=15, pady=(15, 10))
+
+                tags_container = ctk.CTkFrame(tags_frame, fg_color="transparent")
+                tags_container.pack(fill="x", padx=15, pady=(0, 15))
+
+                for tag in analysis['suggested_tags']:
+                    tag_label = ctk.CTkLabel(
+                        tags_container,
+                        text=tag,
+                        font=ctk.CTkFont(size=11),
+                        text_color=self.COLORS['text_light'],
+                        fg_color=self.COLORS['main_bg'],
+                        corner_radius=6,
+                        padx=10,
+                        pady=5
+                    )
+                    tag_label.pack(side="left", padx=5, pady=5)
+
+            # Apply button
+            def apply_analysis():
+                self._set_wallpaper_from_cache(str(wallpaper_path))
+                analysis_dialog.destroy()
+
+            apply_btn = ctk.CTkButton(
+                analysis_dialog,
+                text="Apply This Wallpaper",
+                command=apply_analysis,
+                fg_color=self.COLORS['accent']
+            )
+            apply_btn.pack(pady=10)
+
+            # Close button
+            close_btn = ctk.CTkButton(
+                analysis_dialog,
+                text="Close",
+                command=analysis_dialog.destroy,
+                fg_color=self.COLORS['sidebar_hover']
+            )
+            close_btn.pack(pady=(0, 20))
+
+        except Exception as e:
+            self.show_toast("Error", f"Analysis failed: {str(e)}")
 
     def run(self):
         """Start the GUI"""

@@ -23,6 +23,10 @@ ApiKey = os.getenv("WALLHAVEN_API_KEY", "")
 # Or set it in the .env file as PEXELS_API_KEY
 PexelsApiKey = os.getenv("PEXELS_API_KEY", "")
 
+# Enter your Google Gemini API key from https://makersuite.google.com/app/apikey
+# Or set it in the .env file as GEMINI_API_KEY
+GeminiApiKey = os.getenv("GEMINI_API_KEY", "")
+
 # Choose how to fetch wallpapers from Pexels: "search" or "curated"
 PexelsMode = "curated"
 
@@ -32,7 +36,7 @@ PexelsQuery = "nature"
 # Reddit settings for public JSON API access (no authentication required)
 RedditSettings = {
     "user_agent": "WallpaperChanger/1.0 (by u/lelus78)",
-    "subreddits": ["wallpapers", "wallpaper"],
+    "subreddits": ['wallpapers', 'wallpaper'],
     "sort": "hot",
     "time_filter": "day",
     "limit": 60,
@@ -99,7 +103,7 @@ Presets = [
             "size": "large2x",
         },
         "reddit": {
-            "subreddits": ["wallpapers", "ultrahdwallpapers"],
+    "subreddits": ['wallpapers', 'wallpaper'],
             "sort": "hot",
             "time_filter": "day",
             "min_score": 80,
@@ -124,7 +128,7 @@ Presets = [
             "orientation": "landscape",
         },
         "reddit": {
-            "subreddits": ["EarthPorn", "wallpaper", "NatureIsFuckingLit"],
+    "subreddits": ['wallpapers', 'wallpaper'],
             "sort": "top",
             "time_filter": "week",
             "min_score": 200,

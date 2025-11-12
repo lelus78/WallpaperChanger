@@ -447,13 +447,16 @@ class ModernWallpaperGUI:
         try:
             window_width = self.root.winfo_width()
             card_width = 360
-            available_width = window_width - 100
-            num_columns = max(3, min(6, available_width // card_width))
+            sidebar_width = 250
+            padding = 100
+            available_width = window_width - sidebar_width - padding
+            num_columns = max(2, min(6, available_width // card_width))
         except:
             num_columns = 3
 
+        # Configure columns with weight so they expand/shrink with window
         for i in range(num_columns):
-            scrollable_frame.grid_columnconfigure(i, weight=0, minsize=360)
+            scrollable_frame.grid_columnconfigure(i, weight=1, uniform="card")
 
         if not self.cache_manager or not self.cache_manager.has_items():
             empty_label = ctk.CTkLabel(
@@ -599,11 +602,11 @@ class ModernWallpaperGUI:
             corner_radius=15,
             border_width=2,
             border_color=self.COLORS['card_bg'],
-            width=340,
             height=320
         )
-        card.grid(row=row, column=col, padx=10, pady=10)
+        card.grid(row=row, column=col, padx=10, pady=10, sticky="ew")
         card.grid_propagate(False)
+        card.grid_columnconfigure(0, weight=1)
 
         def on_enter(e):
             card.configure(border_color=self.COLORS['accent'])

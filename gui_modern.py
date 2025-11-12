@@ -45,6 +45,7 @@ class ModernWallpaperGUI:
         self.root = ctk.CTk()
         self.root.title("Wallpaper Changer")
         self.root.geometry("1400x900")
+        self.root.minsize(950, 600)  # Minimum window size to prevent UI clipping
 
         # Configure grid layout
         self.root.grid_columnconfigure(1, weight=1)
@@ -423,14 +424,14 @@ class ModernWallpaperGUI:
         def check_resize():
             try:
                 current_width = self.root.winfo_width()
-                if abs(current_width - self._last_window_width) > 360:
+                if abs(current_width - self._last_window_width) > 100:  # Reduced from 360 to 100 for better responsiveness
                     if hasattr(self, 'wallpapers_scrollable_frame') and self.wallpapers_scrollable_frame.winfo_exists():
                         self._last_window_width = current_width
                         self._load_wallpaper_grid()
             except:
                 pass
             if hasattr(self, 'wallpapers_scrollable_frame') and self.wallpapers_scrollable_frame.winfo_exists():
-                self._resize_timer = self.root.after(1000, check_resize)
+                self._resize_timer = self.root.after(500, check_resize)  # Reduced from 1000ms to 500ms
 
         self._last_window_width = self.root.winfo_width()
         self._resize_timer = self.root.after(1000, check_resize)
@@ -456,7 +457,7 @@ class ModernWallpaperGUI:
 
         # Configure columns with weight so they expand/shrink with window
         for i in range(num_columns):
-            scrollable_frame.grid_columnconfigure(i, weight=1, uniform="card")
+            scrollable_frame.grid_columnconfigure(i, weight=1, uniform="card", minsize=280)
 
         if not self.cache_manager or not self.cache_manager.has_items():
             empty_label = ctk.CTkLabel(

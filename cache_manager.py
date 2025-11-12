@@ -4,16 +4,19 @@ import random
 import shutil
 import threading
 import time
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 from color_analyzer import ColorAnalyzer
+from duplicate_detector import DuplicateDetector
 
 
 class CacheManager:
-    def __init__(self, directory: str, max_items: int = 50, enable_rotation: bool = True, stats_manager=None):
+    def __init__(self, directory: str, max_items: int = 50, enable_rotation: bool = True, stats_manager=None, enable_duplicate_detection: bool = True):
         self.directory = os.path.abspath(os.path.expanduser(directory))
         self.max_items = max_items
         self.enable_rotation = enable_rotation
         self.stats_manager = stats_manager  # Optional StatisticsManager for smart rotation
+        self.enable_duplicate_detection = enable_duplicate_detection
+        self.duplicate_detector = DuplicateDetector() if enable_duplicate_detection else None
         self.index_path = os.path.join(self.directory, "index.json")
         self._lock = threading.Lock()
         self._index: Dict[str, List[Dict]] = {"version": 1, "items": []}
@@ -118,6 +121,24 @@ class CacheManager:
                     print(f"[CACHE] Duplicate detected (source_info), reusing: {os.path.basename(item.get('path'))}")
                     return item.get("path")
 
+            # Check for perceptual duplicates (similar images)
+            if self.duplicate_detector:
+                existing_hashes = {item.get('path'): item.get('perceptual_hash')
+                                 for item in self._index.get("items", [])
+                                 if item.get('perceptual_hash')}
+
+                if existing_hashes:
+                    duplicate_result = self.duplicate_detector.is_duplicate(
+                        source_path,
+                        existing_hashes,
+                        threshold=DuplicateDetector.VERY_SIMILAR
+                    )
+                    if duplicate_result:
+                        dup_path, distance = duplicate_result
+                        similarity = self.duplicate_detector.get_similarity_description(distance)
+                        print(f"[CACHE] {similarity} image detected (distance={distance}), reusing: {os.path.basename(dup_path)}")
+                        return dup_path
+
             os.makedirs(self.directory, exist_ok=True)
             extension = os.path.splitext(source_path)[1] or ".jpg"
             cache_id = f"{int(time.time() * 1000)}_{random.randint(1000, 9999)}"
@@ -133,6 +154,11 @@ class CacheManager:
                 color_categories = []
                 primary_color = None
 
+            # Compute perceptual hash for duplicate detection
+            perceptual_hash = None
+            if self.duplicate_detector:
+                perceptual_hash = self.duplicate_detector.compute_hash(target_path)
+
             entry = dict(metadata)
             entry.update(
                 {
@@ -141,6 +167,7 @@ class CacheManager:
                     "timestamp": time.time(),
                     "color_categories": color_categories,
                     "primary_color": primary_color,
+                    "perceptual_hash": perceptual_hash,
                 }
             )
             self._index.setdefault("items", []).append(entry)

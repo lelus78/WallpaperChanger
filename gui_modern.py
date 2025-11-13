@@ -3231,7 +3231,7 @@ class ModernWallpaperGUI:
     def _show_fullscreen_viewer(self, image_path: str):
         """Show wallpaper in fullscreen viewer"""
         if not os.path.exists(image_path):
-            self._show_toast("Error: Image file not found", error=True)
+            self.show_toast("Error", "Image file not found")
             return
 
         # Create fullscreen window
@@ -3338,7 +3338,7 @@ class ModernWallpaperGUI:
                 height=40,
                 fg_color=self.COLORS['accent'],
                 hover_color=self.COLORS['sidebar_hover'],
-                command=lambda: [self._apply_wallpaper({"path": image_path}), self._show_toast("Wallpaper applied!")]
+                command=lambda: [self._apply_wallpaper({"path": image_path}), self.show_toast("Success", "Wallpaper applied!")]
             )
             set_wallpaper_btn.pack(side="left", padx=20, pady=15)
 
@@ -3367,7 +3367,7 @@ class ModernWallpaperGUI:
                     fg_color="transparent",
                     hover_color="#333333",
                     text_color="#ffd700" if i <= current_rating else "#555555",
-                    command=lambda r=i, p=image_path, btns=star_buttons: [self._set_rating(p, r, btns), self._show_toast(f"Rated {r} stars")]
+                    command=lambda r=i, p=image_path, btns=star_buttons: [self._set_rating(p, r, btns), self.show_toast("Rating", f"Rated {r} stars")]
                 )
                 star_btn.pack(side="left", padx=2)
                 star_buttons.append(star_btn)
@@ -3382,7 +3382,7 @@ class ModernWallpaperGUI:
                 height=40,
                 fg_color="#ff6b81" if is_fav else "#333333",
                 hover_color="#ff4757",
-                command=lambda: [self._toggle_favorite(image_path, fav_btn), self._show_toast("Removed from favorites" if not self.stats_manager.is_favorite(image_path) else "Added to favorites!")]
+                command=lambda: [self._toggle_favorite(image_path, fav_btn), self.show_toast("Favorites", "Removed from favorites" if not self.stats_manager.is_favorite(image_path) else "Added to favorites!")]
             )
             fav_btn.pack(side="left", padx=10, pady=15)
 
@@ -3399,9 +3399,7 @@ class ModernWallpaperGUI:
 
             # Get current tags and all available tags
             current_tags = self.stats_manager.get_tags(image_path)
-            all_tags = set()
-            for item_tags in self.stats_manager.get_all_tags().values():
-                all_tags.update(item_tags)
+            all_tags = set(self.stats_manager.get_all_tags())  # get_all_tags() returns a list
 
             # Tag entry with autocomplete
             tag_entry = ctk.CTkEntry(
@@ -3481,7 +3479,7 @@ class ModernWallpaperGUI:
                     # Update tags display in viewer
                     tags_display.configure(text=f"🏷️ {', '.join(current_tags[:5])}" if current_tags else "🏷️ No tags")
 
-                    self._show_toast(f"Tag '{tag_text}' added")
+                    self.show_toast("Tags", f"Tag '{tag_text}' added")
 
             def add_tag_from_entry(event=None):
                 """Add tag from entry (Enter key or button)"""
@@ -3521,7 +3519,7 @@ class ModernWallpaperGUI:
 
         except Exception as e:
             viewer.destroy()
-            self._show_toast(f"Error loading image: {str(e)}", error=True)
+            self.show_toast("Error", f"Error loading image: {str(e)}")
 
     def _show_ai_assistant_view(self):
         """Show AI Assistant view with Smart Recommendations"""

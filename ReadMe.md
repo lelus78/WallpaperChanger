@@ -13,16 +13,28 @@ A modern, feature-rich wallpaper manager for Windows that automatically download
 - **Duplicate Detection** - Find and manage similar wallpapers with adjustable sensitivity
 - **Statistics Dashboard** - Track usage, favorites, and view distribution charts
 - **Rating & Favorites** - 5-star rating system and favorites management
+- **Wallpaper Deletion** - Permanently remove unwanted wallpapers with confirmation dialog
 
 ### Smart Wallpaper Management
 - **Multi-Monitor Support** - Different wallpapers for each monitor
 - **Auto-Download** - Fresh wallpapers from Wallhaven, Reddit, and Pexels
+- **Multi-Provider Downloads** - Instant download buttons for all three providers in search and AI features
 - **Smart Caching** - Intelligent cache rotation that protects starred and favorite wallpapers
 - **Duplicate Prevention** - Automatic detection using perceptual hashing to avoid re-downloading similar images
 - **Color Extraction** - Fast color analysis (100x faster) with dominant color identification
 - **Weather Overlays** - Display current temperature on wallpapers
 - **Playlists** - Create themed collections for different moods/times
 - **Scheduled Changes** - Automatic rotation with configurable intervals
+
+### AI-Powered Features
+- **AI Mood Detection** - Automatically analyzes your mood and suggests matching wallpapers
+- **Smart Query Translation** - Automatically translates search queries from any language to English for better results
+- **AI Predictive Downloads** - Get AI-suggested wallpapers with interactive preview mode
+- **Interactive Preview** - Compare multiple downloads before applying, dialog stays open to try different providers
+- **Local AI with Ollama** - Complete offline AI functionality with automatic Gemini → Ollama fallback
+- **Privacy Mode** - Optional local-only AI processing without any cloud API calls
+- **Unlimited AI Usage** - No quota limits when using local Ollama models (llama3.2, phi3, mistral, etc.)
+- **Robust Downloads** - Browser-like headers and retry logic for reliable image downloads even from restrictive hosts
 
 ### Easy to Use
 - **One-Click Installation** - Simple installer for non-technical users
@@ -50,7 +62,7 @@ A modern, feature-rich wallpaper manager for Windows that automatically download
 1. Install Python (3.10 or newer recommended)
 2. Install dependencies:
    ```bash
-   pip install requests pillow customtkinter matplotlib keyboard pystray python-dotenv imagehash
+   pip install requests pillow customtkinter matplotlib keyboard pystray python-dotenv imagehash google-generativeai
    ```
 
 3. Configure API keys (optional):
@@ -58,15 +70,128 @@ A modern, feature-rich wallpaper manager for Windows that automatically download
    - **Wallhaven** – [Get API key](https://wallhaven.cc/help/api)
    - **Pexels** – [Get API key](https://www.pexels.com/api/new/)
    - **Reddit** - No key required
+   - **Google Gemini** – [Get API key](https://makersuite.google.com/app/apikey) (for AI features, 250 requests/day free)
 
-4. Customize settings:
+4. Setup Local AI (Optional but Recommended):
+   - **Install Ollama**: Download from [ollama.ai](https://ollama.ai)
+   - **Pull a model**: `ollama pull llama3.2:3b` (or phi3, mistral, gemma)
+   - **Benefits**: Unlimited AI usage, complete privacy, works offline
+   - **Docker Setup**: See [setup_ollama_docker.md](setup_ollama_docker.md) for containerized setup
+
+5. Customize settings:
    - **GUI**: Run `python gui_config.py`
    - **Manual**: Edit `config.py`
+
+## 🤖 AI Features Guide
+
+### Multi-Language Smart Search
+The AI automatically translates and improves your search queries:
+- Type in **any language**: "un cagnolino", "美しい山", "schöner Sonnenuntergang"
+- AI translates to English and improves: "Little puppy", "Beautiful mountain", "Sunset scenery"
+- Works with all three providers (Pexels, Reddit, Wallhaven)
+
+### Multi-Provider Downloads
+Every search and AI feature includes instant download buttons:
+- **Pexels** (blue) - High-quality curated photos
+- **Reddit** (orange) - Community-voted wallpapers
+- **Wallhaven** (green) - Vast wallpaper collection
+- Click any button to download from that source
+
+### AI Mood Detection
+1. Open the **AI Assistant** tab
+2. Click **"Detect Mood"** - AI analyzes time, weather, and your preferences
+3. Get personalized wallpaper suggestions with download buttons
+4. Each provider button downloads a matching wallpaper instantly
+
+### AI Predictive Downloads with Interactive Preview
+1. Go to **AI Assistant** → **AI Predictive**
+2. AI suggests your next wallpaper based on usage patterns
+3. Click any provider button (Pexels/Reddit/Wallhaven) to download alternatives
+4. **Preview updates live** - see each download before applying
+5. Compare multiple options without closing the dialog
+6. Click **"Apply"** when you find the perfect one
+
+### Local AI with Ollama (Recommended)
+**Why use Ollama?**
+- ✅ Unlimited AI requests (no quota limits)
+- ✅ Complete privacy (no data sent to cloud)
+- ✅ Works offline
+- ✅ Automatic fallback when Gemini quota exceeded
+- ✅ Multiple model choices (llama3.2, phi3, mistral, gemma)
+
+**Quick Setup:**
+```bash
+# 1. Install Ollama
+# Download from https://ollama.ai
+
+# 2. Pull a model (choose one)
+ollama pull llama3.2:3b    # Recommended - fast & small (2GB)
+ollama pull phi3:mini      # Alternative - Microsoft model
+ollama pull mistral:latest # Larger but more capable
+
+# 3. Start using AI features - automatic fallback works!
+```
+
+**Docker Setup** (for advanced users):
+```bash
+# 1. Create Ollama container
+docker run -d --name ollama -p 11434:11434 ollama/ollama
+
+# 2. Download model inside container
+docker exec -it ollama ollama pull llama3.2:3b
+
+# 3. Set environment variable (optional)
+export OLLAMA_HOST=http://localhost:11434  # Linux/Mac
+$env:OLLAMA_HOST = "http://localhost:11434" # Windows PowerShell
+```
+
+See [setup_ollama_docker.md](setup_ollama_docker.md) for detailed Docker instructions.
+
+### Privacy Mode
+Enable **"Use Local AI Only"** checkbox in the AI Assistant tab:
+- ✅ All AI processing stays on your machine
+- ✅ No data sent to Google Gemini
+- ✅ Requires Ollama installed
+- ❌ Disabled if no Ollama models found
+
+### AI Fallback Behavior
+The application intelligently manages AI providers:
+1. **Try Gemini first** (if API key configured and not in privacy mode)
+2. **Auto-fallback to Ollama** on quota exceeded (429 errors)
+3. **Seamless experience** - you won't see errors, just logs
+4. **All features covered**: Mood detection, prediction, search, wallpaper analysis
+
+### Testing AI Features
+Run the test script to verify your setup:
+```bash
+python test_ollama_fallback.py
+```
+
+Expected output:
+- ✅ Detects Ollama installation
+- ✅ Lists available models
+- ✅ Tests generation with sample prompt
+- ✅ Simulates quota exceeded scenario
+
+### Gallery Features
+
+**Wallpaper Deletion:**
+- Each wallpaper card has a **🗑️ delete button**
+- Click to permanently remove unwanted wallpapers
+- Confirmation dialog prevents accidental deletion
+- Cleanup includes: file, cache index, statistics, thumbnails
+
+**Tag System:**
+- Tags auto-extracted from provider metadata
+- Display in gallery with 🏷️ emoji
+- Filter wallpapers by clicking tags
+- Works with AI-downloaded wallpapers
 
 ## Configuration Highlights (`config.py`)
 
 - `Provider` / `ProvidersSequence`: default provider(s) and rotation order.
 - `ApiKey` / `PexelsApiKey` / `PexelsMode`: provider credentials and default mode (`search` or `curated` for Pexels).
+- `GeminiApiKey`: Google Gemini API key for AI features (250 requests/day free tier).
 - `RedditSettings`: global defaults for subreddit list, sort/time filters, post limit, minimum score, NSFW toggle, and the user-agent sent to Reddit.
 - `CacheSettings`: cache directory, size cap, and offline rotation toggle.
 - `SchedulerSettings`: enable/disable scheduler, interval, jitter, initial delay, quiet hours, and active days.

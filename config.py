@@ -23,6 +23,14 @@ ApiKey = os.getenv("WALLHAVEN_API_KEY", "")
 # Or set it in the .env file as PEXELS_API_KEY
 PexelsApiKey = os.getenv("PEXELS_API_KEY", "")
 
+# Enter your Unsplash API key from https://unsplash.com/developers
+# Or set it in the .env file as UNSPLASH_ACCESS_KEY
+UnsplashApiKey = os.getenv("UNSPLASH_ACCESS_KEY", "")
+
+# Enter your Pixabay API key from https://pixabay.com/api/docs/
+# Or set it in the .env file as PIXABAY_API_KEY
+PixabayApiKey = os.getenv("PIXABAY_API_KEY", "")
+
 # Enter your Google Gemini API key from https://makersuite.google.com/app/apikey
 # Or set it in the .env file as GEMINI_API_KEY
 GeminiApiKey = os.getenv("GEMINI_API_KEY", "")

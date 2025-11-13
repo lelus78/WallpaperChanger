@@ -26,6 +26,12 @@ class SmartRecommendations:
         self.cache_manager = cache_manager
         self.api_key = api_key
 
+        # Configure Ollama host (supports Docker)
+        # Default: http://localhost:11434
+        # Docker: Set OLLAMA_HOST=http://localhost:PORT or http://host.docker.internal:11434
+        self.ollama_host = os.getenv("OLLAMA_HOST", "http://localhost:11434")
+        print(f"[OLLAMA] Configured host: {self.ollama_host}")
+
         # Configure Gemini if API key is provided
         if self.api_key:
             try:
@@ -55,6 +61,178 @@ class SmartRecommendations:
         except Exception as e:
             print(f"Failed to set API key: {e}")
             return False
+
+    def _get_ollama_models(self) -> List[str]:
+        """Get list of available Ollama models"""
+        try:
+            import requests
+            url = f"{self.ollama_host}/api/tags"
+            response = requests.get(url, timeout=2)
+            if response.status_code == 200:
+                data = response.json()
+                models = [model['name'] for model in data.get('models', [])]
+                return models
+            return []
+        except Exception as e:
+            print(f"[OLLAMA] Failed to get models from {self.ollama_host}: {e}")
+            return []
+
+    def _check_ollama_available(self) -> bool:
+        """Check if Ollama is running locally and has models"""
+        models = self._get_ollama_models()
+        return len(models) > 0
+
+    def _select_best_ollama_model(self) -> Optional[str]:
+        """
+        Select the best available Ollama model for text generation
+        Prioritizes smaller, faster models suitable for quick tasks
+        """
+        models = self._get_ollama_models()
+        if not models:
+            return None
+
+        # Preferred models in order (small, fast models first)
+        preferred = [
+            "llama3.2:3b",
+            "llama3.2:1b",
+            "llama3.2",
+            "phi3:mini",
+            "phi3",
+            "mistral",
+            "gemma:2b",
+            "gemma:7b",
+            "llama3.1:8b",
+            "llama3:8b",
+            "qwen2.5:3b",
+            "qwen2.5:7b"
+        ]
+
+        # Check for preferred models first
+        for pref in preferred:
+            for model in models:
+                if model.startswith(pref):
+                    print(f"[OLLAMA] Selected model: {model}")
+                    return model
+
+        # If no preferred model found, use the first available
+        print(f"[OLLAMA] No preferred model found, using: {models[0]}")
+        return models[0]
+
+    def _generate_with_ollama(self, prompt: str, model: Optional[str] = None) -> Optional[str]:
+        """
+        Generate content using Ollama as fallback
+
+        Args:
+            prompt: The prompt to send to Ollama
+            model: Ollama model name (if None, auto-selects best available)
+
+        Returns:
+            Generated text or None if failed
+        """
+        try:
+            import requests
+
+            # Auto-select model if not specified
+            if model is None:
+                model = self._select_best_ollama_model()
+                if model is None:
+                    print("[OLLAMA] No models available")
+                    return None
+
+            print(f"[OLLAMA] Using local model '{model}' as fallback")
+
+            url = f"{self.ollama_host}/api/generate"
+            response = requests.post(
+                url,
+                json={
+                    "model": model,
+                    "prompt": prompt,
+                    "stream": False
+                },
+                timeout=60  # Increased timeout for larger models (first load can be slow)
+            )
+
+            if response.status_code == 200:
+                return response.json().get("response", "")
+            else:
+                print(f"[OLLAMA] Error: {response.status_code}")
+                return None
+        except Exception as e:
+            print(f"[OLLAMA] Failed: {e}")
+            return None
+
+    def _generate_content(self, prompt: str, force_local: bool = False) -> str:
+        """
+        Generate content with automatic fallback to Ollama
+
+        Args:
+            prompt: The prompt to generate content from
+            force_local: If True, skip Gemini and use Ollama directly (privacy mode)
+
+        Returns:
+            Generated content text
+
+        Raises:
+            Exception if both Gemini and Ollama fail
+        """
+        # Check if user enabled "Local AI Only" mode
+        if not force_local:
+            force_local = os.getenv("USE_LOCAL_AI_ONLY", "false").lower() == "true"
+
+        if force_local:
+            # Privacy mode - use only local Ollama
+            print("[AI] Privacy mode enabled - using local AI only")
+            if self._check_ollama_available():
+                result = self._generate_with_ollama(prompt)
+                if result:
+                    return result
+                else:
+                    raise Exception("⚠️ Local AI generation failed. Please check Ollama is running.")
+            else:
+                raise Exception("⚠️ Local AI mode enabled but Ollama is not available.\nPlease install Ollama or disable 'Local AI Only' in settings.")
+
+        try:
+            # Try Gemini first (cloud mode)
+            if self.model:
+                response = self.model.generate_content(prompt)
+                return response.text
+        except Exception as e:
+            error_msg = str(e)
+            print(f"[AI] Gemini error: {error_msg}")
+
+            # Check if it's a quota/rate limit error
+            if "429" in error_msg or "quota" in error_msg.lower() or "rate" in error_msg.lower():
+                print("[AI] Quota exceeded, trying Ollama fallback...")
+
+                # Check if Ollama is running and has models
+                models = self._get_ollama_models()
+
+                if models:
+                    # Ollama available with models - use it
+                    print(f"[OLLAMA] Found {len(models)} available models: {', '.join(models)}")
+                    ollama_result = self._generate_with_ollama(prompt)
+                    if ollama_result:
+                        return ollama_result
+                    else:
+                        raise Exception("⚠️ Gemini quota exceeded and Ollama fallback failed. Please wait 60 seconds and try again.")
+                else:
+                    # Check if Ollama is installed but no models
+                    try:
+                        import requests
+                        url = f"{self.ollama_host}/api/tags"
+                        response = requests.get(url, timeout=2)
+                        if response.status_code == 200:
+                            # Ollama running but no models
+                            raise Exception(f"⚠️ Gemini quota exceeded (10 requests/min).\n\nOllama is running at {self.ollama_host} but has no models.\nDownload a model: ollama pull llama3.2:3b\n\nOr wait 60 seconds and try again.")
+                        else:
+                            # Ollama not running
+                            raise Exception(f"⚠️ Gemini quota exceeded (10 requests/min).\n\nOllama at {self.ollama_host} is not responding.\nCheck if it's running or wait 60 seconds and try again.")
+                    except requests.exceptions.ConnectionError:
+                        # Ollama not installed/not accessible
+                        raise Exception(f"⚠️ Gemini quota exceeded (10 requests/min).\n\nCannot connect to Ollama at {self.ollama_host}.\n\nInstall Ollama locally or via Docker:\nDocker: docker run -d -p 11434:11434 ollama/ollama\nThen: docker exec -it <container> ollama pull llama3.2:3b\n\nOr wait 60 seconds and try again.")
+            else:
+                # Re-raise non-quota errors
+                raise
 
     def analyze_user_preferences(self) -> Dict[str, Any]:
         """
@@ -256,8 +434,8 @@ User Preferences:
 Provide exactly 3 search queries that would help find wallpapers matching these preferences.
 Format: One query per line, no numbering or extra text."""
 
-            response = self.model.generate_content(prompt)
-            return response.text.strip()
+            response_text = self._generate_content(prompt)
+            return response_text.strip()
         except Exception as e:
             print(f"Gemini API error: {e}")
             return None
@@ -314,43 +492,83 @@ Format: One query per line, no numbering or extra text."""
             day_of_week = now.strftime("%A")
             preferences = self.analyze_user_preferences()
 
-            # Build context for AI
-            prompt = f"""Analyze the current context and suggest a mood for wallpaper selection:
+            # Advanced context analysis
+            # 1. Time-based mood scoring
+            time_mood_score = self._calculate_time_mood_score(hour)
 
-Current Context:
-- Time: {now.strftime("%H:%M")} ({hour}:00)
-- Day: {day_of_week}
-- Weather: {current_weather or "Unknown"}
+            # 2. Get recent wallpaper history (last 10)
+            recent_wallpapers = self._get_recent_wallpaper_patterns(limit=10)
 
-User Preferences:
-- Favorite Tags: {', '.join([tag for tag, _ in preferences['top_tags'][:5]])}
-- Time Patterns: {preferences['time_patterns']}
-- Favorite Colors: {', '.join([color for color, _ in preferences['favorite_colors'][:3]])}
+            # 3. Calculate activity pattern
+            activity_level = self._estimate_activity_level(hour, day_of_week)
 
-Based on this context, suggest:
-1. Current mood (one word: energetic/calm/focused/creative/relaxed)
-2. Recommended wallpaper style (brief description)
-3. Three search queries that match this mood
+            # 4. Season detection
+            month = now.month
+            season = self._get_season(month)
 
-Format your response as:
-MOOD: [mood]
-STYLE: [style description]
-QUERY1: [search query 1]
-QUERY2: [search query 2]
-QUERY3: [search query 3]"""
+            # Build FAST and concise prompt (optimized for speed)
+            top_tags = ', '.join([tag for tag, _ in preferences['top_tags'][:3]])
 
-            response = self.model.generate_content(prompt)
-            result = response.text.strip()
+            # Time-based rules (super concise)
+            if 6 <= hour <= 11:
+                time_hint = "Morning: use bright/light/clean"
+            elif 12 <= hour <= 17:
+                time_hint = "Afternoon: use vibrant/colorful/warm"
+            elif 18 <= hour <= 22:
+                time_hint = "Evening: use warm/cozy/sunset"
+            else:
+                time_hint = "Night: use dark/blue/peaceful"
 
-            # Parse AI response
+            prompt = f"""Detect mood and suggest 3 wallpaper searches (2-3 words each).
+
+Time: {hour}:00 ({day_of_week})
+User likes: {top_tags or 'minimal, nature, abstract'}
+Energy: {time_mood_score['energy']:.0f}/10
+Focus: {time_mood_score['focus']:.0f}/10
+
+{time_hint}
+
+Rules:
+- 2-3 words per query
+- Match time with colors
+- No technical terms
+
+Format:
+MOOD: [energetic/calm/focused/creative/relaxed/inspired]
+SECONDARY: [mood or none]
+CONFIDENCE: [0-100]%
+REASONING: [max 8 words]
+STYLE: [3-5 words]
+QUERY1: [2-3 words]
+QUERY2: [2-3 words]
+QUERY3: [2-3 words]"""
+
+            response_text = self._generate_content(prompt)
+            result = response_text.strip()
+
+            # Parse AI response with enhanced fields
             lines = result.split('\n')
             mood = "neutral"
+            secondary_mood = None
+            confidence = 50
+            reasoning = ""
             style = ""
             queries = []
 
             for line in lines:
                 if line.startswith("MOOD:"):
                     mood = line.replace("MOOD:", "").strip().lower()
+                elif line.startswith("SECONDARY:"):
+                    sec = line.replace("SECONDARY:", "").strip().lower()
+                    if sec != "none":
+                        secondary_mood = sec
+                elif line.startswith("CONFIDENCE:"):
+                    try:
+                        confidence = int(line.replace("CONFIDENCE:", "").replace("%", "").strip())
+                    except:
+                        confidence = 50
+                elif line.startswith("REASONING:"):
+                    reasoning = line.replace("REASONING:", "").strip()
                 elif line.startswith("STYLE:"):
                     style = line.replace("STYLE:", "").strip()
                 elif line.startswith("QUERY"):
@@ -358,16 +576,115 @@ QUERY3: [search query 3]"""
                     if query:
                         queries.append(query)
 
+            # Enhance reasoning with confidence and secondary mood
+            enhanced_reason = reasoning
+            if secondary_mood:
+                enhanced_reason += f" (Mixed with {secondary_mood})"
+            enhanced_reason += f" [Confidence: {confidence}%]"
+
             return {
                 "mood": mood,
+                "secondary_mood": secondary_mood,
+                "confidence": confidence,
                 "style": style,
                 "queries": queries[:3],
-                "reason": f"AI detected {mood} mood based on {day_of_week} {hour}:00"
+                "reason": enhanced_reason,
+                "context_data": {
+                    "hour": hour,
+                    "season": season,
+                    "activity_level": activity_level,
+                    "time_scores": time_mood_score
+                }
             }
 
         except Exception as e:
             print(f"Mood detection error: {e}")
             return {"mood": "neutral", "suggestions": [], "reason": str(e)}
+
+    def _calculate_time_mood_score(self, hour: int) -> Dict[str, float]:
+        """Calculate mood scores based on time of day using circadian rhythm psychology"""
+        # Energy peaks: morning (7-9), midday (11-13), late afternoon (15-17)
+        # Focus peaks: morning (9-11), early afternoon (14-16)
+        # Relaxation peaks: early morning (5-7), evening (19-22), night (22-24)
+        # Creativity peaks: late morning (10-12), late evening (20-23)
+
+        energy = max(0, 10 - abs(hour - 8) * 1.2) if 6 <= hour <= 18 else max(0, 5 - abs(hour - 12) * 0.5)
+        focus = max(0, 10 - abs(hour - 10) * 1.5) if 8 <= hour <= 17 else 3
+        relaxation = 10 - energy if hour >= 19 or hour <= 6 else max(0, 5 - abs(hour - 14) * 0.8)
+        creativity = max(0, 10 - abs(hour - 11) * 1.3) if 9 <= hour <= 14 else max(0, 10 - abs(hour - 21) * 1.2)
+
+        return {
+            "energy": min(10, max(0, energy)),
+            "focus": min(10, max(0, focus)),
+            "relaxation": min(10, max(0, relaxation)),
+            "creativity": min(10, max(0, creativity))
+        }
+
+    def _get_recent_wallpaper_patterns(self, limit: int = 10) -> str:
+        """Analyze recent wallpaper viewing patterns"""
+        recent = []
+
+        # Use get_recent_history instead of get_all_stats
+        history = self.stats_manager.get_recent_history(limit=limit)
+
+        for entry in history:
+            tags = ', '.join(entry.get('tags', [])[:3])
+            rating = self.stats_manager.get_rating(entry.get('path', ''))
+            if tags:
+                recent.append(f"- {tags} (Rating: {rating}/5)")
+
+        return '\n'.join(recent) if recent else "No recent history"
+
+    def _estimate_activity_level(self, hour: int, day_of_week: str) -> int:
+        """Estimate user activity level 0-10 based on time and day"""
+        # Weekday vs weekend
+        is_weekend = day_of_week in ['Saturday', 'Sunday']
+
+        # Base activity by hour
+        if 1 <= hour <= 6:
+            base = 1  # Sleep time
+        elif 7 <= hour <= 9:
+            base = 7  # Morning rush
+        elif 10 <= hour <= 12:
+            base = 9  # Peak work time
+        elif 13 <= hour <= 14:
+            base = 5  # Lunch break
+        elif 15 <= hour <= 17:
+            base = 8  # Afternoon work
+        elif 18 <= hour <= 20:
+            base = 6  # Evening wind down
+        elif 21 <= hour <= 23:
+            base = 4  # Night relaxation
+        else:
+            base = 2  # Late night
+
+        # Adjust for weekend
+        if is_weekend and 7 <= hour <= 17:
+            base = max(3, base - 3)  # Lower activity on weekends
+
+        return min(10, max(1, base))
+
+    def _get_season(self, month: int) -> str:
+        """Determine season from month (Northern Hemisphere)"""
+        if month in [12, 1, 2]:
+            return "Winter"
+        elif month in [3, 4, 5]:
+            return "Spring"
+        elif month in [6, 7, 8]:
+            return "Summer"
+        else:
+            return "Autumn"
+
+    def _format_time_patterns(self, time_patterns: Dict) -> str:
+        """Format time patterns for AI prompt"""
+        if not time_patterns:
+            return "No established patterns yet"
+
+        formatted = []
+        for time_period, count in sorted(time_patterns.items(), key=lambda x: x[1], reverse=True)[:3]:
+            formatted.append(f"- {time_period}: {count} views")
+
+        return '\n'.join(formatted)
 
     def analyze_wallpaper_with_ai(self, wallpaper_path: str, tags: List[str]) -> Dict[str, Any]:
         """

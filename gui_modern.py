@@ -4270,6 +4270,24 @@ class ModernWallpaperGUI:
             pred_dialog.transient(self.root)
             pred_dialog.grab_set()
 
+            # Initialize dialog state early (before any functions that need it)
+            dialog_state = {
+                'img_label': None,
+                'pred_text': None,
+                'score_label': None,
+                'reasons_label': None,
+                'apply_btn': None,
+                'downloaded_path': None,
+                'is_alive': True
+            }
+
+            # Handle dialog close events
+            def on_dialog_close():
+                dialog_state['is_alive'] = False
+                pred_dialog.destroy()
+
+            pred_dialog.protocol("WM_DELETE_WINDOW", on_dialog_close)
+
             # Header
             header = ctk.CTkLabel(
                 pred_dialog,
@@ -4292,6 +4310,7 @@ class ModernWallpaperGUI:
                     img_label.image = photo
                     img_label.pack(pady=10)
                     self.image_references.append(photo)
+                    dialog_state['img_label'] = img_label  # Store reference
             except Exception as e:
                 print(f"Error loading prediction thumbnail: {e}")
 
@@ -4305,6 +4324,7 @@ class ModernWallpaperGUI:
                     wraplength=450
                 )
                 pred_text.pack(pady=15)
+                dialog_state['pred_text'] = pred_text  # Store reference
 
             # Score
             score_label = ctk.CTkLabel(
@@ -4314,6 +4334,7 @@ class ModernWallpaperGUI:
                 text_color=self.COLORS['warning']
             )
             score_label.pack(pady=10)
+            dialog_state['score_label'] = score_label  # Store reference
 
             # Reasons
             if prediction.get('reasons'):
@@ -4326,10 +4347,12 @@ class ModernWallpaperGUI:
                     wraplength=450
                 )
                 reasons_label.pack(pady=10)
+                dialog_state['reasons_label'] = reasons_label  # Store reference
 
             # Apply button
             def apply_prediction():
                 self._set_wallpaper_from_cache(prediction['item']['path'])
+                dialog_state['is_alive'] = False  # Mark dialog as closed
                 pred_dialog.destroy()
 
             apply_btn = ctk.CTkButton(
@@ -4360,16 +4383,6 @@ class ModernWallpaperGUI:
             provider_frame = ctk.CTkFrame(pred_dialog, fg_color="transparent")
             provider_frame.pack(pady=10)
 
-            # Store widgets to update
-            dialog_state = {
-                'img_label': img_label if 'img_label' in locals() else None,
-                'pred_text': pred_text if 'pred_text' in locals() else None,
-                'score_label': score_label,
-                'reasons_label': reasons_label if 'reasons_label' in locals() else None,
-                'apply_btn': None,
-                'downloaded_path': None
-            }
-
             def make_download_similar(query, provider, state):
                 def handler():
                     # Download in background and update preview
@@ -4394,6 +4407,11 @@ class ModernWallpaperGUI:
 
             def update_preview(item, provider):
                 """Update dialog with new downloaded wallpaper"""
+                # Check if dialog is still open
+                if not dialog_state.get('is_alive', False):
+                    print("[PREVIEW] Dialog closed, skipping update")
+                    return
+
                 try:
                     # Update image
                     if dialog_state['img_label']:
@@ -4432,7 +4450,7 @@ class ModernWallpaperGUI:
                     if dialog_state['apply_btn']:
                         dialog_state['apply_btn'].configure(
                             text="✨ Apply Downloaded Wallpaper",
-                            command=lambda: (self._set_wallpaper_from_cache(item['path']), pred_dialog.destroy())
+                            command=lambda: (self._set_wallpaper_from_cache(item['path']), on_dialog_close())
                         )
 
                     self.show_toast("Success", f"Preview updated! Click Apply to use it.")
@@ -4481,7 +4499,7 @@ class ModernWallpaperGUI:
             close_btn = ctk.CTkButton(
                 pred_dialog,
                 text="Maybe Later",
-                command=pred_dialog.destroy,
+                command=on_dialog_close,  # Use handler that sets is_alive flag
                 fg_color=self.COLORS['sidebar_hover']
             )
             close_btn.pack(pady=(15, 20))

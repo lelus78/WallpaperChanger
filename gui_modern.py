@@ -4679,11 +4679,30 @@ class ModernWallpaperGUI:
     def _ai_download_and_apply(self, query: str, provider: str = "pexels"):
         """Download and apply wallpaper based on AI query suggestion"""
         try:
-            self.show_toast("AI Assistant", f"Downloading from {provider.capitalize()}: {query}")
-
             import requests
             import random
             from pathlib import Path
+
+            # Use AI to improve and translate query to English
+            original_query = query
+            if self.recommendations and self.recommendations.model:
+                self.show_toast("AI Assistant", f"Improving search query...")
+                try:
+                    improve_prompt = f"""Translate and improve this wallpaper search query to English.
+Keep it 2-4 words maximum. Make it specific and descriptive for image search.
+
+User query: "{query}"
+
+Return ONLY the improved English search terms, nothing else."""
+
+                    improved = self.recommendations._generate_content(improve_prompt)
+                    query = improved.strip().strip('"').strip("'")
+                    print(f"[AI SEARCH] Original: '{original_query}' -> Improved: '{query}'")
+                except Exception as e:
+                    print(f"[AI SEARCH] Failed to improve query: {e}")
+                    # Continue with original query
+
+            self.show_toast("AI Assistant", f"Downloading from {provider.capitalize()}: {query}")
 
             # Provider-specific logic
             image_url = None
@@ -4775,21 +4794,65 @@ class ModernWallpaperGUI:
                 self.show_toast("Error", f"Failed to get image from {provider}")
                 return
 
-            # Download the image
+            # Download the image with retry logic
             import tempfile
             from pathlib import Path
 
-            img_response = requests.get(image_url, timeout=30)
-            img_response.raise_for_status()
-
-            # Check if image is valid (Imgur removed images are ~503 bytes)
+            MAX_RETRIES = 3
             MIN_IMAGE_SIZE = 5000  # 5KB minimum for valid wallpaper
-            image_size = len(img_response.content)
 
-            if image_size < MIN_IMAGE_SIZE:
-                raise Exception(f"⚠️ Image not available or removed ({image_size} bytes)\nThis often happens with old Reddit/Imgur links.\nTry again to get a different image.")
+            for attempt in range(MAX_RETRIES):
+                try:
+                    print(f"[AI DOWNLOAD] Attempt {attempt + 1}/{MAX_RETRIES}: {image_url}")
 
-            print(f"[AI DOWNLOAD] Valid image: {image_size} bytes")
+                    # Use browser-like headers to avoid blocks
+                    headers = {
+                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
+                        'Accept': 'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8',
+                        'Accept-Language': 'en-US,en;q=0.9',
+                        'Accept-Encoding': 'gzip, deflate, br',
+                        'Referer': 'https://www.google.com/'
+                    }
+
+                    img_response = requests.get(image_url, timeout=30, headers=headers)
+                    img_response.raise_for_status()
+
+                    # Check if image is valid
+                    image_size = len(img_response.content)
+
+                    if image_size < MIN_IMAGE_SIZE:
+                        raise Exception(f"Image too small ({image_size} bytes)")
+
+                    print(f"[AI DOWNLOAD] Valid image: {image_size} bytes")
+                    break  # Success!
+
+                except Exception as e:
+                    print(f"[AI DOWNLOAD] Attempt {attempt + 1} failed: {e}")
+
+                    if attempt < MAX_RETRIES - 1:
+                        # Try to get another image from the same search
+                        print(f"[AI DOWNLOAD] Retrying with different image...")
+
+                        if provider == "pexels":
+                            photo = random.choice(data['photos'])
+                            image_url = photo['src']['original']
+                            metadata['id'] = str(photo['id'])
+                            metadata['url'] = photo['url']
+                        elif provider == "reddit":
+                            if image_posts:
+                                post = random.choice(image_posts)
+                                image_url = post['url']
+                                metadata['id'] = post['id']
+                                metadata['url'] = f"https://reddit.com{post['permalink']}"
+                        elif provider == "wallhaven":
+                            if data.get('data'):
+                                wallpaper = random.choice(data['data'])
+                                image_url = wallpaper['path']
+                                metadata['id'] = wallpaper['id']
+                                metadata['url'] = wallpaper['url']
+                    else:
+                        # Last attempt failed
+                        raise Exception(f"Failed to download after {MAX_RETRIES} attempts. {str(e)}")
 
             # Save to cache
             from pathlib import Path

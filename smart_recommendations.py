@@ -717,8 +717,7 @@ MOOD: [mood]
 STYLE: [art style]
 TAGS: [tag1, tag2, tag3, tag4, tag5]"""
 
-            response = self.model.generate_content(prompt)
-            result = response.text.strip()
+            result = self._generate_content(prompt)
 
             # Parse response
             lines = result.split('\n')
@@ -798,8 +797,7 @@ NUMBER: [wallpaper number] - REASON: [why it matches]
 
 Provide exactly 5 matches."""
 
-            response = self.model.generate_content(prompt)
-            result = response.text.strip()
+            result = self._generate_content(prompt)
 
             # Parse AI response
             matches = []
@@ -858,8 +856,7 @@ What type of wallpaper would be perfect right now? Consider:
 Respond with ONE line describing the ideal wallpaper:
 [description]"""
 
-            response = self.model.generate_content(prompt)
-            prediction = response.text.strip()
+            prediction = self._generate_content(prompt)
 
             # Find best matching wallpaper based on AI prediction
             recommendations = self.get_recommendations(count=5)

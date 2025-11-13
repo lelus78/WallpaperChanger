@@ -4360,11 +4360,86 @@ class ModernWallpaperGUI:
             provider_frame = ctk.CTkFrame(pred_dialog, fg_color="transparent")
             provider_frame.pack(pady=10)
 
-            def make_download_similar(query, provider, dialog):
+            # Store widgets to update
+            dialog_state = {
+                'img_label': img_label if 'img_label' in locals() else None,
+                'pred_text': pred_text if 'pred_text' in locals() else None,
+                'score_label': score_label,
+                'reasons_label': reasons_label if 'reasons_label' in locals() else None,
+                'apply_btn': None,
+                'downloaded_path': None
+            }
+
+            def make_download_similar(query, provider, state):
                 def handler():
-                    dialog.destroy()
-                    self._ai_download_and_apply(query, provider)
+                    # Download in background and update preview
+                    import threading
+
+                    def download_task():
+                        try:
+                            self.show_toast("Downloading", f"Getting wallpaper from {provider.capitalize()}...")
+
+                            # Download (modify to return path instead of applying)
+                            downloaded_item = self._ai_download_similar(query, provider)
+
+                            if downloaded_item and downloaded_item.get('path'):
+                                # Update UI in main thread
+                                self.root.after(0, lambda: update_preview(downloaded_item, provider))
+                        except Exception as e:
+                            self.root.after(0, lambda: self.show_toast("Error", f"Download failed: {str(e)}"))
+
+                    threading.Thread(target=download_task, daemon=True).start()
+
                 return handler
+
+            def update_preview(item, provider):
+                """Update dialog with new downloaded wallpaper"""
+                try:
+                    # Update image
+                    if dialog_state['img_label']:
+                        from PIL import Image, ImageTk
+                        img_path = Path(item['path'])
+                        if img_path.exists():
+                            img = Image.open(img_path)
+                            img.thumbnail((400, 250), Image.Resampling.LANCZOS)
+                            photo = ImageTk.PhotoImage(img)
+                            dialog_state['img_label'].configure(image=photo)
+                            dialog_state['img_label'].image = photo
+                            self.image_references.append(photo)
+
+                    # Update text
+                    if dialog_state['pred_text']:
+                        dialog_state['pred_text'].configure(
+                            text=f"Downloaded from {provider.upper()}:\n\n\"{search_query}\""
+                        )
+
+                    # Update score
+                    dialog_state['score_label'].configure(
+                        text=f"✅ Downloaded Successfully",
+                        text_color=self.COLORS['accent']
+                    )
+
+                    # Update reasons
+                    if dialog_state['reasons_label']:
+                        dialog_state['reasons_label'].configure(
+                            text=f"Source: {provider.capitalize()}\nQuery: {search_query}\nTags: {', '.join(item.get('tags', []))}"
+                        )
+
+                    # Store downloaded path
+                    dialog_state['downloaded_path'] = item['path']
+
+                    # Update apply button
+                    if dialog_state['apply_btn']:
+                        dialog_state['apply_btn'].configure(
+                            text="✨ Apply Downloaded Wallpaper",
+                            command=lambda: (self._set_wallpaper_from_cache(item['path']), pred_dialog.destroy())
+                        )
+
+                    self.show_toast("Success", f"Preview updated! Click Apply to use it.")
+
+                except Exception as e:
+                    print(f"Error updating preview: {e}")
+                    self.show_toast("Error", f"Failed to update preview: {str(e)}")
 
             pexels_btn = ctk.CTkButton(
                 provider_frame,
@@ -4373,7 +4448,7 @@ class ModernWallpaperGUI:
                 height=35,
                 fg_color=self.COLORS['accent'],
                 hover_color=self.COLORS['sidebar_hover'],
-                command=make_download_similar(search_query, "pexels", pred_dialog)
+                command=make_download_similar(search_query, "pexels", dialog_state)
             )
             pexels_btn.pack(side="left", padx=5)
 
@@ -4384,7 +4459,7 @@ class ModernWallpaperGUI:
                 height=35,
                 fg_color="#FF4500",
                 hover_color="#CC3700",
-                command=make_download_similar(search_query, "reddit", pred_dialog)
+                command=make_download_similar(search_query, "reddit", dialog_state)
             )
             reddit_btn.pack(side="left", padx=5)
 
@@ -4395,9 +4470,12 @@ class ModernWallpaperGUI:
                 height=35,
                 fg_color="#6C5CE7",
                 hover_color="#5A4BC4",
-                command=make_download_similar(search_query, "wallhaven", pred_dialog)
+                command=make_download_similar(search_query, "wallhaven", dialog_state)
             )
             wallhaven_btn.pack(side="left", padx=5)
+
+            # Store apply button reference
+            dialog_state['apply_btn'] = apply_btn
 
             # Close button
             close_btn = ctk.CTkButton(
@@ -4734,8 +4812,14 @@ class ModernWallpaperGUI:
         except Exception as e:
             self.show_toast("Error", f"Analysis failed: {str(e)}")
 
-    def _ai_download_and_apply(self, query: str, provider: str = "pexels"):
-        """Download and apply wallpaper based on AI query suggestion"""
+    def _ai_download_similar(self, query: str, provider: str = "pexels"):
+        """Download wallpaper WITHOUT applying - returns item dict"""
+        # Call main download function but intercept before apply
+        result = self._ai_download_and_apply(query, provider, apply_wallpaper=False)
+        return result
+
+    def _ai_download_and_apply(self, query: str, provider: str = "pexels", apply_wallpaper: bool = True):
+        """Download and optionally apply wallpaper based on AI query suggestion"""
         try:
             import requests
             import random
@@ -4973,18 +5057,22 @@ Return ONLY the improved English search terms, nothing else."""
                     self.stats_manager.add_tag(str(filepath), tag)
                 print(f"[AI DOWNLOAD] Tags added to statistics manager")
 
-            # Apply the wallpaper
-            print(f"[AI DOWNLOAD] Applying wallpaper...")
-            self._apply_wallpaper(item)
-
-            print(f"[AI DOWNLOAD] All done!")
-            self.show_toast("Success", f"AI wallpaper downloaded and applied!")
+            # Apply the wallpaper (only if requested)
+            if apply_wallpaper:
+                print(f"[AI DOWNLOAD] Applying wallpaper...")
+                self._apply_wallpaper(item)
+                print(f"[AI DOWNLOAD] All done!")
+                self.show_toast("Success", f"AI wallpaper downloaded and applied!")
+            else:
+                print(f"[AI DOWNLOAD] Download complete (not applied)")
+                return item  # Return item for preview mode
 
         except Exception as e:
             import traceback
             error_details = traceback.format_exc()
             print(f"[AI DOWNLOAD ERROR] {error_details}")
             self.show_toast("Error", f"Download failed: {str(e)}")
+            return None
 
     def run(self):
         """Start the GUI"""

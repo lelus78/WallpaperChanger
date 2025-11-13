@@ -28,6 +28,36 @@ ctk.set_appearance_mode("dark")
 ctk.set_default_color_theme("blue")
 
 
+class AILoadingDialog(ctk.CTkToplevel):
+    """Non-blocking loading dialog for AI operations"""
+    def __init__(self, parent, title="AI Processing", message="Please wait..."):
+        super().__init__(parent)
+        self.title(title)
+        self.geometry("400x200")
+        self.transient(parent)
+        self.resizable(False, False)
+        self.update_idletasks()
+        x = parent.winfo_x() + (parent.winfo_width() // 2) - 200
+        y = parent.winfo_y() + (parent.winfo_height() // 2) - 100
+        self.geometry(f"+{x}+{y}")
+        self.configure(fg_color="#2D2D3A")
+
+        ctk.CTkLabel(self, text=f"🤖 {message}", font=ctk.CTkFont(size=16), text_color="#FFFFFF").pack(pady=(40, 20))
+        self.progress = ctk.CTkProgressBar(self, mode="indeterminate", width=300)
+        self.progress.pack(pady=10)
+        self.progress.start()
+        self.status_label = ctk.CTkLabel(self, text="Analyzing...", font=ctk.CTkFont(size=12), text_color="#B0B0B0")
+        self.status_label.pack(pady=10)
+        self.protocol("WM_DELETE_WINDOW", lambda: None)
+
+    def update_status(self, status: str):
+        self.status_label.configure(text=status)
+
+    def close(self):
+        self.progress.stop()
+        self.destroy()
+
+
 class ModernWallpaperGUI:
     """Modern CustomTkinter-based GUI for Wallpaper Changer"""
 
@@ -4476,6 +4506,15 @@ class ModernWallpaperGUI:
 
             img_response = requests.get(image_url, timeout=30)
             img_response.raise_for_status()
+
+            # Check if image is valid (Imgur removed images are ~503 bytes)
+            MIN_IMAGE_SIZE = 5000  # 5KB minimum for valid wallpaper
+            image_size = len(img_response.content)
+
+            if image_size < MIN_IMAGE_SIZE:
+                raise Exception(f"⚠️ Image not available or removed ({image_size} bytes)\nThis often happens with old Reddit/Imgur links.\nTry again to get a different image.")
+
+            print(f"[AI DOWNLOAD] Valid image: {image_size} bytes")
 
             # Save to cache
             cache_dir = self.cache_manager.cache_dir

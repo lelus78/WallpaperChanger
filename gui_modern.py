@@ -2826,13 +2826,16 @@ class ModernWallpaperGUI:
                 return
         self.show_toast("Error", "Wallpaper not found in cache")
 
-    def _toggle_favorite(self, wallpaper_path: str, button: ctk.CTkButton):
+    def _toggle_favorite(self, wallpaper_path: str, button: ctk.CTkButton = None):
         """Toggle favorite status for a wallpaper"""
         is_fav = self.stats_manager.toggle_favorite(wallpaper_path)
-        button.configure(
-            text="♥" if is_fav else "♡",
-            fg_color="#ff6b81" if is_fav else "transparent"
-        )
+
+        # Update UI button if provided
+        if button:
+            button.configure(
+                text="♥" if is_fav else "♡",
+                fg_color="#ff6b81" if is_fav else "transparent"
+            )
 
     def _toggle_ban(self, wallpaper_path: str, button: ctk.CTkButton):
         """Toggle ban status for a wallpaper"""
@@ -2913,14 +2916,17 @@ class ModernWallpaperGUI:
             print(f"[DELETE ERROR] {e}")
             self.show_toast("Error", f"Failed to delete: {str(e)}", duration=3000)
 
-    def _set_rating(self, wallpaper_path: str, rating: int, star_buttons: List):
+    def _set_rating(self, wallpaper_path: str, rating: int, star_buttons: List = None):
         """Set rating for a wallpaper"""
         self.stats_manager.set_rating(wallpaper_path, rating)
-        for i, btn in enumerate(star_buttons, 1):
-            if i <= rating:
-                btn.configure(text="★", text_color="#ffd700")
-            else:
-                btn.configure(text="☆", text_color=self.COLORS['text_muted'])
+
+        # Update UI buttons if provided
+        if star_buttons:
+            for i, btn in enumerate(star_buttons, 1):
+                if i <= rating:
+                    btn.configure(text="★", text_color="#ffd700")
+                else:
+                    btn.configure(text="☆", text_color=self.COLORS['text_muted'])
 
     def _show_monitor_selection_dialog(self, item: Dict[str, Any]):
         """Show dialog to choose monitor for wallpaper"""
@@ -3347,6 +3353,8 @@ class ModernWallpaperGUI:
                 text_color="#888888"
             ).pack(side="left", padx=(0, 10))
 
+            # Create star buttons list for updating
+            star_buttons = []
             current_rating = self.stats_manager.get_rating(image_path)
             for i in range(1, 6):
                 star_text = "★" if i <= current_rating else "☆"
@@ -3359,9 +3367,10 @@ class ModernWallpaperGUI:
                     fg_color="transparent",
                     hover_color="#333333",
                     text_color="#ffd700" if i <= current_rating else "#555555",
-                    command=lambda r=i, p=image_path: [self._set_rating(p, r, None), self._show_toast(f"Rated {r} stars")]
+                    command=lambda r=i, p=image_path, btns=star_buttons: [self._set_rating(p, r, btns), self._show_toast(f"Rated {r} stars")]
                 )
                 star_btn.pack(side="left", padx=2)
+                star_buttons.append(star_btn)
 
             # Favorite button
             is_fav = self.stats_manager.is_favorite(image_path)
@@ -3373,9 +3382,136 @@ class ModernWallpaperGUI:
                 height=40,
                 fg_color="#ff6b81" if is_fav else "#333333",
                 hover_color="#ff4757",
-                command=lambda: [self._toggle_favorite(image_path, None), viewer.destroy(), self._show_toast("Added to favorites!" if not is_fav else "Removed from favorites")]
+                command=lambda: [self._toggle_favorite(image_path, fav_btn), self._show_toast("Removed from favorites" if not self.stats_manager.is_favorite(image_path) else "Added to favorites!")]
             )
             fav_btn.pack(side="left", padx=10, pady=15)
+
+            # Tag editor with autocomplete
+            tag_frame = ctk.CTkFrame(action_bar, fg_color="transparent")
+            tag_frame.pack(side="left", padx=20, pady=15)
+
+            ctk.CTkLabel(
+                tag_frame,
+                text="Tags:",
+                font=ctk.CTkFont(size=12),
+                text_color="#888888"
+            ).pack(side="left", padx=(0, 10))
+
+            # Get current tags and all available tags
+            current_tags = self.stats_manager.get_tags(image_path)
+            all_tags = set()
+            for item_tags in self.stats_manager.get_all_tags().values():
+                all_tags.update(item_tags)
+
+            # Tag entry with autocomplete
+            tag_entry = ctk.CTkEntry(
+                tag_frame,
+                placeholder_text="Add tag...",
+                width=150,
+                height=35
+            )
+            tag_entry.pack(side="left", padx=5)
+
+            # Autocomplete dropdown (initially hidden)
+            autocomplete_frame = ctk.CTkFrame(
+                viewer,
+                fg_color=self.COLORS['sidebar_bg'],
+                border_width=1,
+                border_color=self.COLORS['accent']
+            )
+
+            # Store autocomplete widgets
+            autocomplete_labels = []
+
+            def update_autocomplete(event=None):
+                """Update autocomplete suggestions based on input"""
+                text = tag_entry.get().strip().lower()
+
+                # Clear previous suggestions
+                for label in autocomplete_labels:
+                    label.destroy()
+                autocomplete_labels.clear()
+
+                if not text:
+                    autocomplete_frame.place_forget()
+                    return
+
+                # Find matching tags
+                matches = sorted([tag for tag in all_tags if text in tag.lower() and tag.lower() not in [t.lower() for t in current_tags]])[:5]
+
+                if matches:
+                    # Position autocomplete below entry
+                    autocomplete_frame.place(
+                        x=tag_entry.winfo_rootx() - viewer.winfo_rootx(),
+                        y=tag_entry.winfo_rooty() - viewer.winfo_rooty() + tag_entry.winfo_height(),
+                        width=tag_entry.winfo_width()
+                    )
+
+                    for match in matches:
+                        match_label = ctk.CTkLabel(
+                            autocomplete_frame,
+                            text=match,
+                            font=ctk.CTkFont(size=12),
+                            text_color=self.COLORS['text_light'],
+                            anchor="w",
+                            padx=10,
+                            pady=5
+                        )
+                        match_label.pack(fill="x")
+                        match_label.bind("<Button-1>", lambda e, t=match: select_tag(t))
+                        match_label.bind("<Enter>", lambda e, l=match_label: l.configure(text_color=self.COLORS['accent']))
+                        match_label.bind("<Leave>", lambda e, l=match_label: l.configure(text_color=self.COLORS['text_light']))
+                        autocomplete_labels.append(match_label)
+                else:
+                    autocomplete_frame.place_forget()
+
+            def select_tag(tag_text):
+                """Select a tag from autocomplete or add new one"""
+                tag_text = tag_text.strip()
+                if tag_text and tag_text not in current_tags:
+                    # Add tag to wallpaper
+                    self.stats_manager.add_tag(image_path, tag_text)
+                    current_tags.append(tag_text)
+                    all_tags.add(tag_text)
+
+                    # Clear entry and hide autocomplete
+                    tag_entry.delete(0, 'end')
+                    autocomplete_frame.place_forget()
+
+                    # Update tags display in viewer
+                    tags_display.configure(text=f"🏷️ {', '.join(current_tags[:5])}" if current_tags else "🏷️ No tags")
+
+                    self._show_toast(f"Tag '{tag_text}' added")
+
+            def add_tag_from_entry(event=None):
+                """Add tag from entry (Enter key or button)"""
+                tag_text = tag_entry.get().strip()
+                if tag_text:
+                    select_tag(tag_text)
+
+            # Bind events
+            tag_entry.bind("<KeyRelease>", update_autocomplete)
+            tag_entry.bind("<Return>", add_tag_from_entry)
+            tag_entry.bind("<FocusOut>", lambda e: viewer.after(200, lambda: autocomplete_frame.place_forget()))
+
+            # Add button
+            add_tag_btn = ctk.CTkButton(
+                tag_frame,
+                text="➕",
+                width=35,
+                height=35,
+                fg_color=self.COLORS['accent'],
+                hover_color=self.COLORS['sidebar_hover'],
+                command=add_tag_from_entry
+            )
+            add_tag_btn.pack(side="left", padx=5)
+
+            # Tags display (update existing tags label in info bar)
+            tags_display = None
+            for child in info_bar.winfo_children():
+                if isinstance(child, ctk.CTkLabel) and child.cget("text").startswith("🏷️"):
+                    tags_display = child
+                    break
 
             # Close on Escape or click
             viewer.bind("<Escape>", lambda e: viewer.destroy())

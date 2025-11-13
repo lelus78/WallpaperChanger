@@ -774,6 +774,20 @@ class ModernWallpaperGUI:
                 )
                 color_label.pack(padx=8, pady=2)
 
+            # Delete button
+            delete_btn = ctk.CTkButton(
+                info_frame,
+                text="🗑️",
+                font=ctk.CTkFont(size=16),
+                width=30,
+                height=30,
+                fg_color="transparent",
+                hover_color="#ff0000",
+                corner_radius=15,
+                command=lambda p=image_path, c=card, i=item: self._delete_wallpaper(p, c, i)
+            )
+            delete_btn.pack(side="right", padx=(5, 0))
+
             is_banned = self.stats_manager.is_banned(image_path)
             ban_btn = ctk.CTkButton(
                 info_frame,
@@ -2852,6 +2866,53 @@ class ModernWallpaperGUI:
         else:
             self.show_toast("Wallpaper Unbanned", "This wallpaper is now available again", duration=2000)
 
+    def _delete_wallpaper(self, wallpaper_path: str, card_widget, item: Dict[str, Any]):
+        """Permanently delete a wallpaper from cache"""
+        import tkinter.messagebox as messagebox
+
+        # Confirm deletion
+        confirm = messagebox.askyesno(
+            "Delete Wallpaper",
+            f"Are you sure you want to permanently delete this wallpaper?\n\nThis action cannot be undone.",
+            icon='warning'
+        )
+
+        if not confirm:
+            return
+
+        try:
+            # Remove from disk
+            if os.path.exists(wallpaper_path):
+                os.remove(wallpaper_path)
+                print(f"[DELETE] Removed file: {wallpaper_path}")
+
+            # Remove from cache index
+            self.cache_manager._index["items"] = [
+                i for i in self.cache_manager._index.get("items", [])
+                if i.get("path") != wallpaper_path
+            ]
+            self.cache_manager._save()
+            print(f"[DELETE] Removed from cache index")
+
+            # Remove from statistics
+            if wallpaper_path in self.stats_manager.data.get("wallpapers", {}):
+                del self.stats_manager.data["wallpapers"][wallpaper_path]
+                self.stats_manager._save()
+                print(f"[DELETE] Removed from statistics")
+
+            # Remove from thumbnail cache
+            if wallpaper_path in self.thumbnail_cache:
+                del self.thumbnail_cache[wallpaper_path]
+
+            # Hide the card from UI
+            card_widget.destroy()
+
+            self.show_toast("Deleted", "Wallpaper permanently deleted", duration=2000)
+
+        except Exception as e:
+            print(f"[DELETE ERROR] {e}")
+            self.show_toast("Error", f"Failed to delete: {str(e)}", duration=3000)
+
     def _set_rating(self, wallpaper_path: str, rating: int, star_buttons: List):
         """Set rating for a wallpaper"""
         self.stats_manager.set_rating(wallpaper_path, rating)
@@ -3630,19 +3691,58 @@ class ModernWallpaperGUI:
                 search_entry = ctk.CTkEntry(
                     search_frame,
                     placeholder_text="Describe what kind of wallpaper you want...",
-                    width=500,
+                    width=400,
                     height=35,
                     fg_color=self.COLORS['main_bg'],
                     border_color=self.COLORS['accent']
                 )
                 search_entry.pack(side="left", padx=(0, 10))
 
-                search_btn = ctk.CTkButton(
-                    search_frame,
-                    text="🔍 AI Search",
-                    width=120,
+                # Download buttons for different providers
+                download_container = ctk.CTkFrame(search_frame, fg_color="transparent")
+                download_container.pack(side="left", padx=(0, 10))
+
+                ctk.CTkLabel(download_container, text="Download:", font=ctk.CTkFont(size=11), text_color=self.COLORS['text_muted']).pack(side="left", padx=(0, 5))
+
+                pexels_dl_btn = ctk.CTkButton(
+                    download_container,
+                    text="Pexels",
+                    width=70,
+                    height=28,
                     fg_color=self.COLORS['accent'],
                     hover_color=self.COLORS['sidebar_hover'],
+                    command=lambda: self._ai_download_and_apply(search_entry.get(), "pexels")
+                )
+                pexels_dl_btn.pack(side="left", padx=2)
+
+                reddit_dl_btn = ctk.CTkButton(
+                    download_container,
+                    text="Reddit",
+                    width=70,
+                    height=28,
+                    fg_color="#FF4500",
+                    hover_color="#CC3700",
+                    command=lambda: self._ai_download_and_apply(search_entry.get(), "reddit")
+                )
+                reddit_dl_btn.pack(side="left", padx=2)
+
+                wallhaven_dl_btn = ctk.CTkButton(
+                    download_container,
+                    text="Wallhaven",
+                    width=80,
+                    height=28,
+                    fg_color="#6C5CE7",
+                    hover_color="#5A4BC4",
+                    command=lambda: self._ai_download_and_apply(search_entry.get(), "wallhaven")
+                )
+                wallhaven_dl_btn.pack(side="left", padx=2)
+
+                search_btn = ctk.CTkButton(
+                    search_frame,
+                    text="🔍 Search Cache",
+                    width=120,
+                    fg_color=self.COLORS['sidebar_hover'],
+                    hover_color=self.COLORS['accent'],
                     command=lambda: self._ai_natural_search(search_entry.get())
                 )
                 search_btn.pack(side="left")
@@ -3997,22 +4097,51 @@ class ModernWallpaperGUI:
                     )
                     q_label.pack(side="left", padx=(0, 10))
 
-                    def make_download_handler(search_query, dialog):
+                    # Button container for provider choices
+                    btn_container = ctk.CTkFrame(content_frame, fg_color="transparent")
+                    btn_container.pack(side="right")
+
+                    def make_download_handler(search_query, provider, dialog):
                         def handler():
                             dialog.destroy()
-                            self._ai_download_and_apply(search_query)
+                            self._ai_download_and_apply(search_query, provider)
                         return handler
 
-                    download_btn = ctk.CTkButton(
-                        content_frame,
-                        text="🔽 Download",
-                        width=100,
+                    # Pexels button
+                    pexels_btn = ctk.CTkButton(
+                        btn_container,
+                        text="Pexels",
+                        width=70,
                         height=28,
-                        command=make_download_handler(query, mood_dialog),
+                        command=make_download_handler(query, "pexels", mood_dialog),
                         fg_color=self.COLORS['accent'],
                         hover_color=self.COLORS['sidebar_hover']
                     )
-                    download_btn.pack(side="right")
+                    pexels_btn.pack(side="left", padx=2)
+
+                    # Reddit button
+                    reddit_btn = ctk.CTkButton(
+                        btn_container,
+                        text="Reddit",
+                        width=70,
+                        height=28,
+                        command=make_download_handler(query, "reddit", mood_dialog),
+                        fg_color="#FF4500",
+                        hover_color="#CC3700"
+                    )
+                    reddit_btn.pack(side="left", padx=2)
+
+                    # Wallhaven button
+                    wallhaven_btn = ctk.CTkButton(
+                        btn_container,
+                        text="Wallhaven",
+                        width=80,
+                        height=28,
+                        command=make_download_handler(query, "wallhaven", mood_dialog),
+                        fg_color="#6C5CE7",
+                        hover_color="#5A4BC4"
+                    )
+                    wallhaven_btn.pack(side="left", padx=2)
 
             # Close button
             close_btn = ctk.CTkButton(
@@ -4547,35 +4676,104 @@ class ModernWallpaperGUI:
         except Exception as e:
             self.show_toast("Error", f"Analysis failed: {str(e)}")
 
-    def _ai_download_and_apply(self, query: str):
+    def _ai_download_and_apply(self, query: str, provider: str = "pexels"):
         """Download and apply wallpaper based on AI query suggestion"""
         try:
-            self.show_toast("AI Assistant", f"Downloading wallpaper for: {query}")
+            self.show_toast("AI Assistant", f"Downloading from {provider.capitalize()}: {query}")
 
-            # Use Pexels to search and download based on query
             import requests
-            from config import PexelsApiKey
-
-            if not PexelsApiKey:
-                self.show_toast("Error", "Pexels API key not configured")
-                return
-
-            # Search for wallpaper on Pexels
-            headers = {"Authorization": PexelsApiKey}
-            search_url = f"https://api.pexels.com/v1/search?query={query}&per_page=15&orientation=landscape"
-
-            response = requests.get(search_url, headers=headers, timeout=10)
-            response.raise_for_status()
-            data = response.json()
-
-            if not data.get('photos'):
-                self.show_toast("Error", "No wallpapers found for this query")
-                return
-
-            # Get random wallpaper from results
             import random
-            photo = random.choice(data['photos'])
-            image_url = photo['src']['original']
+            from pathlib import Path
+
+            # Provider-specific logic
+            image_url = None
+            metadata = {}
+
+            if provider == "pexels":
+                from config import PexelsApiKey
+                if not PexelsApiKey:
+                    self.show_toast("Error", "Pexels API key not configured")
+                    return
+
+                headers = {"Authorization": PexelsApiKey}
+                search_url = f"https://api.pexels.com/v1/search?query={query}&per_page=15&orientation=landscape"
+                response = requests.get(search_url, headers=headers, timeout=10)
+                response.raise_for_status()
+                data = response.json()
+
+                if not data.get('photos'):
+                    self.show_toast("Error", "No wallpapers found on Pexels")
+                    return
+
+                photo = random.choice(data['photos'])
+                image_url = photo['src']['original']
+                metadata = {
+                    "id": str(photo['id']),
+                    "url": photo['url'],
+                    "provider": "pexels",
+                    "photographer": photo.get('photographer', 'Unknown')
+                }
+
+            elif provider == "reddit":
+                # Reddit wallpaper scraping
+                subreddits = ["wallpaper", "wallpapers", "MinimalWallpaper", "WidescreenWallpaper"]
+                search_query = query.replace(' ', '+')
+
+                for subreddit in subreddits:
+                    try:
+                        reddit_url = f"https://www.reddit.com/r/{subreddit}/search.json?q={search_query}&restrict_sr=1&limit=50"
+                        headers = {"User-Agent": "WallpaperChanger/1.0"}
+                        response = requests.get(reddit_url, headers=headers, timeout=10)
+                        response.raise_for_status()
+                        data = response.json()
+
+                        # Filter for image posts
+                        posts = data.get('data', {}).get('children', [])
+                        image_posts = [p['data'] for p in posts if p['data'].get('url', '').endswith(('.jpg', '.jpeg', '.png'))]
+
+                        if image_posts:
+                            post = random.choice(image_posts)
+                            image_url = post['url']
+                            metadata = {
+                                "id": post['id'],
+                                "url": f"https://reddit.com{post['permalink']}",
+                                "provider": "reddit",
+                                "photographer": f"u/{post['author']}"
+                            }
+                            break
+                    except:
+                        continue
+
+                if not image_url:
+                    self.show_toast("Error", "No wallpapers found on Reddit")
+                    return
+
+            elif provider == "wallhaven":
+                # Wallhaven API
+                from config import ApiKey
+                api_key_param = f"&apikey={ApiKey}" if ApiKey else ""
+                search_url = f"https://wallhaven.cc/api/v1/search?q={query}&categories=111&purity=100&atleast=1920x1080{api_key_param}"
+
+                response = requests.get(search_url, timeout=10)
+                response.raise_for_status()
+                data = response.json()
+
+                if not data.get('data'):
+                    self.show_toast("Error", "No wallpapers found on Wallhaven")
+                    return
+
+                wallpaper = random.choice(data['data'])
+                image_url = wallpaper['path']
+                metadata = {
+                    "id": wallpaper['id'],
+                    "url": wallpaper['url'],
+                    "provider": "wallhaven",
+                    "photographer": wallpaper.get('uploader', {}).get('username', 'Unknown')
+                }
+
+            if not image_url:
+                self.show_toast("Error", f"Failed to get image from {provider}")
+                return
 
             # Download the image
             import tempfile
@@ -4594,34 +4792,77 @@ class ModernWallpaperGUI:
             print(f"[AI DOWNLOAD] Valid image: {image_size} bytes")
 
             # Save to cache
-            cache_dir = self.cache_manager.cache_dir
-            filename = f"ai_suggested_{int(time.time())}_{photo['id']}.jpg"
+            from pathlib import Path
+            cache_dir = Path(self.cache_manager.cache_dir)
+            print(f"[AI DOWNLOAD] Cache dir: {cache_dir}")
+
+            # Ensure cache directory exists
+            cache_dir.mkdir(parents=True, exist_ok=True)
+
+            filename = f"ai_suggested_{int(time.time())}_{metadata['id']}.jpg"
             filepath = cache_dir / filename
+            print(f"[AI DOWNLOAD] Saving to: {filepath}")
 
             with open(filepath, 'wb') as f:
                 f.write(img_response.content)
+            print(f"[AI DOWNLOAD] File saved successfully")
 
-            # Add to cache metadata
+            # Add to cache index
+            # Extract colors for filtering
+            try:
+                from color_analyzer import ColorAnalyzer
+                color_categories = ColorAnalyzer.get_color_categories(str(filepath), num_colors=3)
+                primary_color = ColorAnalyzer.get_primary_color_category(str(filepath))
+            except Exception as e:
+                print(f"[WARNING] Failed to extract colors: {e}")
+                color_categories = []
+                primary_color = None
+
+            # Compute perceptual hash for duplicate detection
+            perceptual_hash = None
+            if self.cache_manager.duplicate_detector:
+                perceptual_hash = self.cache_manager.duplicate_detector.compute_hash(str(filepath))
+
+            # Extract tags from query (split by spaces and commas)
+            tags = [tag.strip() for tag in query.replace(',', ' ').split() if tag.strip()]
+            print(f"[AI DOWNLOAD] Query: '{query}' -> Tags: {tags}")
+
             item = {
+                "id": metadata['id'],
                 "path": str(filepath),
-                "url": photo['url'],
-                "provider": "pexels",
-                "photographer": photo.get('photographer', 'Unknown'),
-                "tags": query.split(),
-                "timestamp": datetime.now().isoformat(),
+                "url": metadata['url'],
+                "provider": metadata['provider'],
+                "photographer": metadata['photographer'],
+                "tags": tags,
+                "timestamp": time.time(),
                 "ai_suggested": True,
-                "ai_query": query
+                "ai_query": query,
+                "color_categories": color_categories,
+                "primary_color": primary_color,
+                "perceptual_hash": perceptual_hash
             }
 
-            self.cache_manager.cache_metadata.append(item)
-            self.cache_manager._save_metadata()
+            self.cache_manager._index.setdefault("items", []).append(item)
+            self.cache_manager._save()
+            print(f"[AI DOWNLOAD] Metadata saved with {len(tags)} tags: {tags}")
+
+            # Save tags to statistics manager so they appear in the gallery
+            if tags and self.stats_manager:
+                for tag in tags:
+                    self.stats_manager.add_tag(str(filepath), tag)
+                print(f"[AI DOWNLOAD] Tags added to statistics manager")
 
             # Apply the wallpaper
+            print(f"[AI DOWNLOAD] Applying wallpaper...")
             self._apply_wallpaper(item)
 
+            print(f"[AI DOWNLOAD] All done!")
             self.show_toast("Success", f"AI wallpaper downloaded and applied!")
 
         except Exception as e:
+            import traceback
+            error_details = traceback.format_exc()
+            print(f"[AI DOWNLOAD ERROR] {error_details}")
             self.show_toast("Error", f"Download failed: {str(e)}")
 
     def run(self):

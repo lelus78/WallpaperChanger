@@ -3,6 +3,8 @@ import os
 import sys
 import subprocess
 import signal
+import time
+from datetime import datetime
 import customtkinter as ctk
 from pathlib import Path
 from PIL import Image, ImageTk
@@ -3870,7 +3872,7 @@ class ModernWallpaperGUI:
             )
             reason_label.pack(pady=10)
 
-            # Queries
+            # Queries with download buttons
             if mood_data.get('queries'):
                 queries_label = ctk.CTkLabel(
                     mood_dialog,
@@ -3884,13 +3886,34 @@ class ModernWallpaperGUI:
                     q_frame = ctk.CTkFrame(mood_dialog, fg_color=self.COLORS['card_bg'])
                     q_frame.pack(fill="x", padx=40, pady=5)
 
+                    # Query text and download button in horizontal layout
+                    content_frame = ctk.CTkFrame(q_frame, fg_color="transparent")
+                    content_frame.pack(fill="x", padx=10, pady=8)
+
                     q_label = ctk.CTkLabel(
-                        q_frame,
+                        content_frame,
                         text=f"💡 {query}",
                         font=ctk.CTkFont(size=12),
                         text_color=self.COLORS['text_light']
                     )
-                    q_label.pack(pady=8, padx=10)
+                    q_label.pack(side="left", padx=(0, 10))
+
+                    def make_download_handler(search_query, dialog):
+                        def handler():
+                            dialog.destroy()
+                            self._ai_download_and_apply(search_query)
+                        return handler
+
+                    download_btn = ctk.CTkButton(
+                        content_frame,
+                        text="🔽 Download",
+                        width=100,
+                        height=28,
+                        command=make_download_handler(query, mood_dialog),
+                        fg_color=self.COLORS['accent'],
+                        hover_color=self.COLORS['sidebar_hover']
+                    )
+                    download_btn.pack(side="right")
 
             # Close button
             close_btn = ctk.CTkButton(
@@ -4007,7 +4030,7 @@ class ModernWallpaperGUI:
             # Create dialog to show prediction
             pred_dialog = ctk.CTkToplevel(self.root)
             pred_dialog.title("AI Prediction")
-            pred_dialog.geometry("500x400")
+            pred_dialog.geometry("550x650")
             pred_dialog.transient(self.root)
             pred_dialog.grab_set()
 
@@ -4019,6 +4042,22 @@ class ModernWallpaperGUI:
                 text_color=self.COLORS['accent']
             )
             header.pack(pady=(20, 15))
+
+            # Wallpaper thumbnail
+            try:
+                from PIL import Image, ImageTk
+                img_path = Path(prediction['item']['path'])
+                if img_path.exists():
+                    img = Image.open(img_path)
+                    img.thumbnail((400, 250), Image.Resampling.LANCZOS)
+                    photo = ImageTk.PhotoImage(img)
+
+                    img_label = ctk.CTkLabel(pred_dialog, image=photo, text="")
+                    img_label.image = photo
+                    img_label.pack(pady=10)
+                    self.image_references.append(photo)
+            except Exception as e:
+                print(f"Error loading prediction thumbnail: {e}")
 
             # AI Prediction text
             if prediction.get('ai_prediction'):
@@ -4400,6 +4439,74 @@ class ModernWallpaperGUI:
 
         except Exception as e:
             self.show_toast("Error", f"Analysis failed: {str(e)}")
+
+    def _ai_download_and_apply(self, query: str):
+        """Download and apply wallpaper based on AI query suggestion"""
+        try:
+            self.show_toast("AI Assistant", f"Downloading wallpaper for: {query}")
+
+            # Use Pexels to search and download based on query
+            import requests
+            from config import PexelsApiKey
+
+            if not PexelsApiKey:
+                self.show_toast("Error", "Pexels API key not configured")
+                return
+
+            # Search for wallpaper on Pexels
+            headers = {"Authorization": PexelsApiKey}
+            search_url = f"https://api.pexels.com/v1/search?query={query}&per_page=15&orientation=landscape"
+
+            response = requests.get(search_url, headers=headers, timeout=10)
+            response.raise_for_status()
+            data = response.json()
+
+            if not data.get('photos'):
+                self.show_toast("Error", "No wallpapers found for this query")
+                return
+
+            # Get random wallpaper from results
+            import random
+            photo = random.choice(data['photos'])
+            image_url = photo['src']['original']
+
+            # Download the image
+            import tempfile
+            from pathlib import Path
+
+            img_response = requests.get(image_url, timeout=30)
+            img_response.raise_for_status()
+
+            # Save to cache
+            cache_dir = self.cache_manager.cache_dir
+            filename = f"ai_suggested_{int(time.time())}_{photo['id']}.jpg"
+            filepath = cache_dir / filename
+
+            with open(filepath, 'wb') as f:
+                f.write(img_response.content)
+
+            # Add to cache metadata
+            item = {
+                "path": str(filepath),
+                "url": photo['url'],
+                "provider": "pexels",
+                "photographer": photo.get('photographer', 'Unknown'),
+                "tags": query.split(),
+                "timestamp": datetime.now().isoformat(),
+                "ai_suggested": True,
+                "ai_query": query
+            }
+
+            self.cache_manager.cache_metadata.append(item)
+            self.cache_manager._save_metadata()
+
+            # Apply the wallpaper
+            self._apply_wallpaper(item)
+
+            self.show_toast("Success", f"AI wallpaper downloaded and applied!")
+
+        except Exception as e:
+            self.show_toast("Error", f"Download failed: {str(e)}")
 
     def run(self):
         """Start the GUI"""

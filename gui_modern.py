@@ -3458,6 +3458,25 @@ class ModernWallpaperGUI:
         )
         status_label.pack(anchor="w", padx=20, pady=(0, 20))
 
+        # Privacy Section
+        privacy_section = ctk.CTkFrame(scroll_container, fg_color=self.COLORS['card_bg'], corner_radius=12)
+        privacy_section.pack(fill="x", pady=(0, 20))
+
+        ctk.CTkLabel(privacy_section, text="🔒 Privacy Settings", font=ctk.CTkFont(size=16, weight="bold"), text_color=self.COLORS['text_light']).pack(anchor="w", padx=20, pady=(20, 10))
+        ctk.CTkLabel(privacy_section, text="Keep all AI processing on your local machine (requires Ollama)", font=ctk.CTkFont(size=12), text_color=self.COLORS['text_muted']).pack(anchor="w", padx=20, pady=(0, 15))
+
+        if not hasattr(self, 'use_local_ai_var'):
+            self.use_local_ai_var = ctk.BooleanVar(value=os.getenv("USE_LOCAL_AI_ONLY", "false").lower() == "true")
+
+        ctk.CTkCheckBox(privacy_section, text="Use Local AI Only (Ollama) - No data sent to Google", variable=self.use_local_ai_var, font=ctk.CTkFont(size=13), text_color=self.COLORS['text_light'], fg_color=self.COLORS['accent'], hover_color=self.COLORS['sidebar_hover'], command=self._toggle_local_ai_mode).pack(anchor="w", padx=20, pady=(0, 10))
+
+        ollama_models = self.recommendations._get_ollama_models()
+        if ollama_models:
+            ctk.CTkLabel(privacy_section, text=f"✓ Ollama available ({len(ollama_models)} models)", font=ctk.CTkFont(size=11), text_color=self.COLORS['accent']).pack(anchor="w", padx=40, pady=(0, 5))
+            ctk.CTkLabel(privacy_section, text="Models: " + ", ".join(ollama_models[:3]) + (f" (+{len(ollama_models)-3})" if len(ollama_models)>3 else ""), font=ctk.CTkFont(size=10), text_color=self.COLORS['text_muted']).pack(anchor="w", padx=40, pady=(0, 20))
+        else:
+            ctk.CTkLabel(privacy_section, text="⚠ Ollama not found - Install from ollama.ai", font=ctk.CTkFont(size=11), text_color=self.COLORS['warning']).pack(anchor="w", padx=40, pady=(0, 20))
+
         # Smart Recommendations Section
         if self.recommendations.model or True:  # Show even without API (basic recommendations)
             recs_section = ctk.CTkFrame(
@@ -3850,22 +3869,72 @@ class ModernWallpaperGUI:
             )
             error_label.pack(expand=True, pady=50)
 
+    def _toggle_local_ai_mode(self):
+        use_local = self.use_local_ai_var.get()
+        try:
+            env_path = Path(__file__).parent / '.env'
+            env_lines = []
+            if env_path.exists():
+                with open(env_path, 'r', encoding='utf-8') as f:
+                    env_lines = f.readlines()
+
+            new_env_lines = []
+            key_found = False
+            for line in env_lines:
+                if line.startswith('USE_LOCAL_AI_ONLY='):
+                    new_env_lines.append(f'USE_LOCAL_AI_ONLY={"true" if use_local else "false"}\n')
+                    key_found = True
+                else:
+                    new_env_lines.append(line)
+
+            if not key_found:
+                new_env_lines.append(f'USE_LOCAL_AI_ONLY={"true" if use_local else "false"}\n')
+
+            with open(env_path, 'w', encoding='utf-8') as f:
+                f.writelines(new_env_lines)
+
+            os.environ["USE_LOCAL_AI_ONLY"] = "true" if use_local else "false"
+
+            if use_local:
+                models = self.recommendations._get_ollama_models()
+                if models:
+                    self.show_toast("Privacy Mode", f"✓ Using local AI only\nModel: {models[0]}")
+                else:
+                    self.show_toast("Warning", "⚠ Ollama not available\nPlease install Ollama")
+                    self.use_local_ai_var.set(False)
+            else:
+                self.show_toast("Privacy Mode", "Using cloud AI (Google Gemini)")
+        except Exception as e:
+            self.show_toast("Error", f"Failed to save setting: {e}")
+
     def _detect_mood_ai(self):
         """🎭 Detect current mood using AI"""
         if not self.recommendations.model:
             self.show_toast("Error", "Please configure Gemini API key first")
             return
 
+        # Create loading dialog
+        loading = AILoadingDialog(self.root, title="AI Mood Detection", message="Analyzing your mood...")
+
+        def ai_task():
+            try:
+                loading.update_status("Analyzing context...")
+                current_weather = None
+                mood_data = self.recommendations.detect_mood_and_suggest(current_weather)
+                self.root.after(0, lambda: self._show_mood_results(mood_data, loading))
+            except Exception as e:
+                self.root.after(0, lambda: self._show_mood_error(str(e), loading))
+
+        threading.Thread(target=ai_task, daemon=True).start()
+
+    def _show_mood_results(self, mood_data, loading_dialog):
         try:
-            # Show loading
-            self.show_toast("AI Assistant", "Analyzing your mood...")
+            if loading_dialog and loading_dialog.winfo_exists():
+                loading_dialog.close()
+        except:
+            pass
 
-            # Get current weather if available
-            current_weather = None  # TODO: integrate with weather module
-
-            # Detect mood
-            mood_data = self.recommendations.detect_mood_and_suggest(current_weather)
-
+        try:
             # Create dialog to show results
             mood_dialog = ctk.CTkToplevel(self.root)
             mood_dialog.title("AI Mood Detection")
@@ -3955,7 +4024,15 @@ class ModernWallpaperGUI:
             close_btn.pack(pady=20)
 
         except Exception as e:
-            self.show_toast("Error", f"Mood detection failed: {str(e)}")
+            self.show_toast("Error", f"Failed to display results: {str(e)}")
+
+    def _show_mood_error(self, error_msg, loading_dialog):
+        try:
+            if loading_dialog and loading_dialog.winfo_exists():
+                loading_dialog.close()
+        except:
+            pass
+        self.show_toast("Error", f"Mood detection failed:\n{error_msg}")
 
     def _ai_natural_search(self, query: str):
         """💬 Search using natural language"""

@@ -4341,6 +4341,64 @@ class ModernWallpaperGUI:
             )
             apply_btn.pack(pady=20)
 
+            # Download similar wallpapers section
+            similar_label = ctk.CTkLabel(
+                pred_dialog,
+                text="💡 Download similar wallpapers:",
+                font=ctk.CTkFont(size=13, weight="bold"),
+                text_color=self.COLORS['text_light']
+            )
+            similar_label.pack(pady=(10, 5))
+
+            # Extract search query from AI prediction
+            search_query = prediction.get('ai_prediction', 'wallpaper')
+            # Clean up the query - take first few descriptive words
+            words = search_query.split()[:4]
+            search_query = ' '.join(words)
+
+            # Provider buttons
+            provider_frame = ctk.CTkFrame(pred_dialog, fg_color="transparent")
+            provider_frame.pack(pady=10)
+
+            def make_download_similar(query, provider, dialog):
+                def handler():
+                    dialog.destroy()
+                    self._ai_download_and_apply(query, provider)
+                return handler
+
+            pexels_btn = ctk.CTkButton(
+                provider_frame,
+                text="📥 Pexels",
+                width=140,
+                height=35,
+                fg_color=self.COLORS['accent'],
+                hover_color=self.COLORS['sidebar_hover'],
+                command=make_download_similar(search_query, "pexels", pred_dialog)
+            )
+            pexels_btn.pack(side="left", padx=5)
+
+            reddit_btn = ctk.CTkButton(
+                provider_frame,
+                text="📥 Reddit",
+                width=140,
+                height=35,
+                fg_color="#FF4500",
+                hover_color="#CC3700",
+                command=make_download_similar(search_query, "reddit", pred_dialog)
+            )
+            reddit_btn.pack(side="left", padx=5)
+
+            wallhaven_btn = ctk.CTkButton(
+                provider_frame,
+                text="📥 Wallhaven",
+                width=140,
+                height=35,
+                fg_color="#6C5CE7",
+                hover_color="#5A4BC4",
+                command=make_download_similar(search_query, "wallhaven", pred_dialog)
+            )
+            wallhaven_btn.pack(side="left", padx=5)
+
             # Close button
             close_btn = ctk.CTkButton(
                 pred_dialog,
@@ -4348,7 +4406,7 @@ class ModernWallpaperGUI:
                 command=pred_dialog.destroy,
                 fg_color=self.COLORS['sidebar_hover']
             )
-            close_btn.pack(pady=(0, 20))
+            close_btn.pack(pady=(15, 20))
 
         except Exception as e:
             self.show_toast("Error", f"Prediction failed: {str(e)}")

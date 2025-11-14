@@ -3398,8 +3398,65 @@ class ModernWallpaperGUI:
             ).pack(side="left", padx=(0, 10))
 
             # Get current tags and all available tags
-            current_tags = self.stats_manager.get_tags(image_path)
+            # IMPORTANT: Make a copy to avoid reference issues
+            current_tags = list(self.stats_manager.get_tags(image_path))
             all_tags = set(self.stats_manager.get_all_tags())  # get_all_tags() returns a list
+
+            # Container for current tags display
+            current_tags_frame = ctk.CTkFrame(tag_frame, fg_color="transparent")
+            current_tags_frame.pack(side="left", padx=5)
+
+            # Store tag buttons for updating
+            tag_buttons = []
+
+            def update_tag_display():
+                """Update the display of current tags"""
+                # Clear existing tag buttons
+                for btn in tag_buttons:
+                    btn.destroy()
+                tag_buttons.clear()
+
+                # Create button for each current tag
+                # Use enumerate to avoid lambda closure issues
+                for idx, tag in enumerate(current_tags[:5]):  # Show max 5 tags
+                    def make_remove_command(tag_to_remove):
+                        return lambda: remove_tag(tag_to_remove)
+
+                    tag_btn = ctk.CTkButton(
+                        current_tags_frame,
+                        text=f"{tag} ✕",
+                        font=ctk.CTkFont(size=11),
+                        width=80,
+                        height=28,
+                        fg_color=self.COLORS['sidebar_bg'],
+                        hover_color="#4a4a4a",
+                        text_color=self.COLORS['text_light'],
+                        command=make_remove_command(tag)
+                    )
+                    tag_btn.pack(side="left", padx=2)
+                    tag_buttons.append(tag_btn)
+
+            def remove_tag(tag_text):
+                """Remove a tag from the image"""
+                # Check if tag exists in current_tags
+                if tag_text not in current_tags:
+                    return
+
+                # Remove from stats manager
+                self.stats_manager.remove_tag(image_path, tag_text)
+
+                # Remove from current list
+                current_tags.remove(tag_text)
+
+                # Update displays
+                update_tag_display()
+                if tags_display:
+                    tags_display.configure(text=f"🏷️ {', '.join(current_tags[:5])}" if current_tags else "🏷️ No tags")
+
+                self.show_toast("Tags", f"Tag '{tag_text}' removed")
+
+            # Initial display of current tags
+            update_tag_display()
 
             # Tag entry with autocomplete
             tag_entry = ctk.CTkEntry(
@@ -3441,6 +3498,7 @@ class ModernWallpaperGUI:
                 if matches:
                     # Update widgets first to get correct positions
                     tag_entry.update_idletasks()
+                    viewer.update_idletasks()
 
                     # Position autocomplete below entry (use relative coordinates to action_bar)
                     # Calculate position relative to viewer window
@@ -3454,10 +3512,37 @@ class ModernWallpaperGUI:
                         entry_y += parent.winfo_y()
                         parent = parent.master
 
-                    # Position autocomplete below entry
+                    # Calculate dropdown height (estimate based on number of matches)
+                    dropdown_height = len(matches) * 30 + 10  # ~30px per item + padding
+
+                    # Get viewer dimensions
+                    viewer_width = viewer.winfo_width()
+                    viewer_height = viewer.winfo_height()
+
+                    # Calculate default position (below entry)
+                    dropdown_x = entry_x
+                    dropdown_y = entry_y + tag_entry.winfo_height() + 2
+
+                    # Check if dropdown would go off the right edge
+                    if dropdown_x + 150 > viewer_width:  # 150 is dropdown width
+                        dropdown_x = viewer_width - 150 - 10  # 10px margin
+
+                    # Check if dropdown would go off the bottom edge
+                    if dropdown_y + dropdown_height > viewer_height:
+                        # Position above the entry instead
+                        dropdown_y = entry_y - dropdown_height - 2
+                        # If still off screen, clamp to top with margin
+                        if dropdown_y < 10:
+                            dropdown_y = 10
+
+                    # Ensure minimum margins
+                    dropdown_x = max(10, dropdown_x)  # 10px left margin
+                    dropdown_y = max(10, dropdown_y)  # 10px top margin
+
+                    # Position autocomplete
                     autocomplete_frame.place(
-                        x=entry_x,
-                        y=entry_y + tag_entry.winfo_height() + 2
+                        x=dropdown_x,
+                        y=dropdown_y
                     )
 
                     for match in matches:
@@ -3471,36 +3556,69 @@ class ModernWallpaperGUI:
                             pady=5
                         )
                         match_label.pack(fill="x")
-                        match_label.bind("<Button-1>", lambda e, t=match: select_tag(t))
+
+                        # Use a function to handle click and prevent event propagation
+                        def on_click(event, tag=match):
+                            select_tag(tag)
+                            return "break"  # Prevent event propagation
+
+                        match_label.bind("<Button-1>", on_click)
                         match_label.bind("<Enter>", lambda e, l=match_label: l.configure(text_color=self.COLORS['accent']))
                         match_label.bind("<Leave>", lambda e, l=match_label: l.configure(text_color=self.COLORS['text_light']))
                         autocomplete_labels.append(match_label)
                 else:
                     autocomplete_frame.place_forget()
 
+            # Processing flag to prevent concurrent operations
+            is_processing = {'value': False}
+
             def select_tag(tag_text):
                 """Select a tag from autocomplete or add new one"""
-                tag_text = tag_text.strip()
-                if tag_text and tag_text not in current_tags:
-                    # Add tag to wallpaper
+                # Prevent concurrent calls
+                if is_processing['value']:
+                    return
+
+                is_processing['value'] = True
+
+                try:
+                    tag_text = tag_text.strip()
+                    if not tag_text:
+                        return
+
+                    # Check if tag already exists (case-insensitive)
+                    tag_lower = tag_text.lower()
+                    if tag_lower in [t.lower() for t in current_tags]:
+                        # Tag already exists, just clear the entry
+                        tag_entry.delete(0, 'end')
+                        autocomplete_frame.place_forget()
+                        self.show_toast("Tags", f"Tag '{tag_text}' already exists")
+                        return
+
+                    # Add tag to stats manager and current list
                     self.stats_manager.add_tag(image_path, tag_text)
                     current_tags.append(tag_text)
                     all_tags.add(tag_text)
 
-                    # Clear entry and hide autocomplete
-                    tag_entry.delete(0, 'end')
-                    autocomplete_frame.place_forget()
-
                     # Update tags display in viewer
-                    tags_display.configure(text=f"🏷️ {', '.join(current_tags[:5])}" if current_tags else "🏷️ No tags")
+                    update_tag_display()
+                    if tags_display:
+                        tags_display.configure(text=f"🏷️ {', '.join(current_tags[:5])}" if current_tags else "🏷️ No tags")
 
                     self.show_toast("Tags", f"Tag '{tag_text}' added")
+
+                    # Always clear entry and hide autocomplete
+                    tag_entry.delete(0, 'end')
+                    autocomplete_frame.place_forget()
+                finally:
+                    # Reset flag immediately
+                    is_processing['value'] = False
 
             def add_tag_from_entry(event=None):
                 """Add tag from entry (Enter key or button)"""
                 tag_text = tag_entry.get().strip()
                 if tag_text:
                     select_tag(tag_text)
+                return "break"  # Prevent event propagation
 
             # Bind events
             tag_entry.bind("<KeyRelease>", update_autocomplete)

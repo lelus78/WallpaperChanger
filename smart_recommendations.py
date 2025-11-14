@@ -43,6 +43,13 @@ class SmartRecommendations:
         else:
             self.model = None
 
+    def is_ai_available(self) -> bool:
+        """Check if any AI provider (Gemini or Ollama) is available"""
+        use_local_ai = os.getenv("USE_LOCAL_AI_ONLY", "false").lower() == "true"
+        if use_local_ai:
+            return self._check_ollama_available()
+        return self.model is not None or self._check_ollama_available()
+
     def set_api_key(self, api_key: str) -> bool:
         """
         Set or update the Google Gemini API key

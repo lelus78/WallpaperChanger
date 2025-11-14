@@ -54,8 +54,9 @@ class AILoadingDialog(ctk.CTkToplevel):
         self.status_label.configure(text=status)
 
     def close(self):
-        self.progress.stop()
-        self.destroy()
+        if self.winfo_exists():
+            self.progress.stop()
+            self.destroy()
 
 
 class ModernWallpaperGUI:
@@ -141,6 +142,9 @@ class ModernWallpaperGUI:
         # Track last known wallpaper to auto-refresh Home view
         self.last_known_wallpaper_path = None
         self._monitor_wallpaper_changes()
+
+        # AI Loading Dialog
+        self.loading_dialog = None
 
     def _monitor_wallpaper_changes(self):
         """Periodically check for wallpaper changes and auto-refresh Home view."""
@@ -3823,7 +3827,7 @@ class ModernWallpaperGUI:
             ctk.CTkLabel(privacy_section, text="⚠ Ollama not found - Install from ollama.ai", font=ctk.CTkFont(size=11), text_color=self.COLORS['warning']).pack(anchor="w", padx=40, pady=(0, 20))
 
         # Smart Recommendations Section
-        if self.recommendations.model or True:  # Show even without API (basic recommendations)
+        if self.recommendations.is_ai_available():  # Show even without API (basic recommendations)
             recs_section = ctk.CTkFrame(
                 scroll_container,
                 fg_color=self.COLORS['card_bg'],
@@ -3883,7 +3887,7 @@ class ModernWallpaperGUI:
                 no_recs.pack(padx=20, pady=40)
 
             # AI Suggestions (if API is configured)
-            if self.recommendations.model:
+            if self.recommendations.is_ai_available():
                 suggestions_section = ctk.CTkFrame(
                     scroll_container,
                     fg_color=self.COLORS['card_bg'],
@@ -4291,32 +4295,39 @@ class ModernWallpaperGUI:
         except Exception as e:
             self.show_toast("Error", f"Failed to save setting: {e}")
 
+        # Refresh the AI assistant view to reflect the changes
+        self._navigate("AI Assistant")
+
     def _detect_mood_ai(self):
         """🎭 Detect current mood using AI"""
-        if not self.recommendations.model:
-            self.show_toast("Error", "Please configure Gemini API key first")
+        if not self.recommendations.is_ai_available():
+            self.show_toast("Error", "Please configure Gemini API key or enable local AI")
             return
 
-        # Create loading dialog
-        loading = AILoadingDialog(self.root, title="AI Mood Detection", message="Analyzing your mood...")
+        # Create loading dialog if it doesn't exist
+        if self.loading_dialog is None:
+            self.loading_dialog = AILoadingDialog(self.root)
+            self.loading_dialog.withdraw()
+
+        # Show loading dialog
+        self.loading_dialog.title("AI Mood Detection")
+        self.loading_dialog.update_status("Analyzing your mood...")
+        self.loading_dialog.deiconify()
 
         def ai_task():
             try:
-                loading.update_status("Analyzing context...")
+                self.loading_dialog.update_status("Analyzing context...")
                 current_weather = None
                 mood_data = self.recommendations.detect_mood_and_suggest(current_weather)
-                self.root.after(0, lambda: self._show_mood_results(mood_data, loading))
+                self.root.after(0, lambda: self._show_mood_results(mood_data))
             except Exception as e:
-                self.root.after(0, lambda: self._show_mood_error(str(e), loading))
+                self.root.after(0, lambda: self._show_mood_error(str(e)))
 
         threading.Thread(target=ai_task, daemon=True).start()
 
-    def _show_mood_results(self, mood_data, loading_dialog):
-        try:
-            if loading_dialog and loading_dialog.winfo_exists():
-                loading_dialog.close()
-        except:
-            pass
+    def _show_mood_results(self, mood_data):
+        if self.loading_dialog:
+            self.loading_dialog.withdraw()
 
         try:
             # Create dialog to show results
@@ -4439,357 +4450,390 @@ class ModernWallpaperGUI:
         except Exception as e:
             self.show_toast("Error", f"Failed to display results: {str(e)}")
 
-    def _show_mood_error(self, error_msg, loading_dialog):
-        try:
-            if loading_dialog and loading_dialog.winfo_exists():
-                loading_dialog.close()
-        except:
-            pass
+    def _show_mood_error(self, error_msg):
+        if self.loading_dialog:
+            self.loading_dialog.withdraw()
         self.show_toast("Error", f"Mood detection failed:\n{error_msg}")
 
     def _ai_natural_search(self, query: str):
         """💬 Search using natural language"""
-        if not self.recommendations.model:
-            self.show_toast("Error", "Please configure Gemini API key first")
+        if not self.recommendations.is_ai_available():
+            self.show_toast("Error", "Please configure Gemini API key or enable local AI")
             return
 
         if not query or not query.strip():
             self.show_toast("Error", "Please enter a search query")
             return
 
-        try:
-            # Show loading
-            self.show_toast("AI Assistant", f"Searching for: {query}...")
+        # Create loading dialog if it doesn't exist
+        if self.loading_dialog is None:
+            self.loading_dialog = AILoadingDialog(self.root)
+            self.loading_dialog.withdraw()
 
-            # Perform AI search
-            results = self.recommendations.natural_language_search(query.strip())
+        # Show loading dialog
+        self.loading_dialog.title("AI Natural Language Search")
+        self.loading_dialog.update_status(f"Searching for: {query}...")
+        self.loading_dialog.deiconify()
 
-            if not results:
-                self.show_toast("AI Assistant", "No matching wallpapers found")
-                return
+        def ai_task():
+            try:
+                results = self.recommendations.natural_language_search(query.strip())
+                self.root.after(0, lambda: self._show_natural_search_results(query, results))
+            except Exception as e:
+                self.root.after(0, lambda: self._show_natural_search_error(str(e)))
 
-            # Create dialog to show results
-            search_dialog = ctk.CTkToplevel(self.root)
-            search_dialog.title("AI Search Results")
-            search_dialog.geometry("900x700")
-            search_dialog.transient(self.root)
-            search_dialog.grab_set()
+        threading.Thread(target=ai_task, daemon=True).start()
 
-            # Header
-            header = ctk.CTkLabel(
-                search_dialog,
-                text=f"🔍 Results for: '{query}'",
-                font=ctk.CTkFont(size=18, weight="bold"),
-                text_color=self.COLORS['text_light']
+    def _show_natural_search_results(self, query, results):
+        if self.loading_dialog:
+            self.loading_dialog.withdraw()
+
+        if not results:
+            self.show_toast("AI Assistant", "No matching wallpapers found")
+            return
+
+        # Create dialog to show results
+        search_dialog = ctk.CTkToplevel(self.root)
+        search_dialog.title("AI Search Results")
+        search_dialog.geometry("900x700")
+        search_dialog.transient(self.root)
+        search_dialog.grab_set()
+
+        # Header
+        header = ctk.CTkLabel(
+            search_dialog,
+            text=f"🔍 Results for: '{query}'",
+            font=ctk.CTkFont(size=18, weight="bold"),
+            text_color=self.COLORS['text_light']
+        )
+        header.pack(pady=(20, 10))
+
+        # Scrollable frame for results
+        scroll_frame = ctk.CTkScrollableFrame(search_dialog, fg_color="transparent")
+        scroll_frame.pack(fill="both", expand=True, padx=20, pady=10)
+
+        # Display results
+        for idx, result in enumerate(results):
+            result_card = ctk.CTkFrame(scroll_frame, fg_color=self.COLORS['card_bg'])
+            result_card.pack(fill="x", pady=10)
+
+            # Reason
+            reason_label = ctk.CTkLabel(
+                result_card,
+                text=f"#{idx+1}: {result['reason']}",
+                font=ctk.CTkFont(size=13),
+                text_color=self.COLORS['text_light'],
+                wraplength=800
             )
-            header.pack(pady=(20, 10))
+            reason_label.pack(anchor="w", padx=15, pady=10)
 
-            # Scrollable frame for results
-            scroll_frame = ctk.CTkScrollableFrame(search_dialog, fg_color="transparent")
-            scroll_frame.pack(fill="both", expand=True, padx=20, pady=10)
+            # Apply button
+            def make_search_apply_handler(path, dialog):
+                def handler():
+                    self._set_wallpaper_from_cache(path)
+                    dialog.destroy()
+                return handler
 
-            # Display results
-            for idx, result in enumerate(results):
-                result_card = ctk.CTkFrame(scroll_frame, fg_color=self.COLORS['card_bg'])
-                result_card.pack(fill="x", pady=10)
-
-                # Reason
-                reason_label = ctk.CTkLabel(
-                    result_card,
-                    text=f"#{idx+1}: {result['reason']}",
-                    font=ctk.CTkFont(size=13),
-                    text_color=self.COLORS['text_light'],
-                    wraplength=800
-                )
-                reason_label.pack(anchor="w", padx=15, pady=10)
-
-                # Apply button
-                def make_search_apply_handler(path, dialog):
-                    def handler():
-                        self._set_wallpaper_from_cache(path)
-                        dialog.destroy()
-                    return handler
-
-                apply_btn = ctk.CTkButton(
-                    result_card,
-                    text="Apply This Wallpaper",
-                    command=make_search_apply_handler(result['item']['path'], search_dialog),
-                    fg_color=self.COLORS['accent']
-                )
-                apply_btn.pack(padx=15, pady=(0, 10))
-
-            # Close button
-            close_btn = ctk.CTkButton(
-                search_dialog,
-                text="Close",
-                command=search_dialog.destroy,
-                fg_color=self.COLORS['sidebar_hover']
+            apply_btn = ctk.CTkButton(
+                result_card,
+                text="Apply This Wallpaper",
+                command=make_search_apply_handler(result['item']['path'], search_dialog),
+                fg_color=self.COLORS['accent']
             )
-            close_btn.pack(pady=10)
+            apply_btn.pack(padx=15, pady=(0, 10))
 
-        except Exception as e:
-            self.show_toast("Error", f"AI search failed: {str(e)}")
+        # Close button
+        close_btn = ctk.CTkButton(
+            search_dialog,
+            text="Close",
+            command=search_dialog.destroy,
+            fg_color=self.COLORS['sidebar_hover']
+        )
+        close_btn.pack(pady=10)
+
+    def _show_natural_search_error(self, error_msg):
+        if self.loading_dialog:
+            self.loading_dialog.withdraw()
+        self.show_toast("Error", f"AI search failed: {error_msg}")
 
     def _ai_predict_wallpaper(self):
         """🔮 Predict perfect wallpaper using AI"""
-        if not self.recommendations.model:
-            self.show_toast("Error", "Please configure Gemini API key first")
+        if not self.recommendations.is_ai_available():
+            self.show_toast("Error", "Please configure Gemini API key or enable local AI")
             return
 
+        # Create loading dialog if it doesn't exist
+        if self.loading_dialog is None:
+            self.loading_dialog = AILoadingDialog(self.root)
+            self.loading_dialog.withdraw()
+
+        # Show loading dialog
+        self.loading_dialog.title("AI Predictive Selection")
+        self.loading_dialog.update_status("Predicting perfect wallpaper...")
+        self.loading_dialog.deiconify()
+
+        def ai_task():
+            try:
+                prediction = self.recommendations.predict_next_wallpaper()
+                self.root.after(0, lambda: self._show_predict_wallpaper_results(prediction))
+            except Exception as e:
+                self.root.after(0, lambda: self._show_predict_wallpaper_error(str(e)))
+
+        threading.Thread(target=ai_task, daemon=True).start()
+
+    def _show_predict_wallpaper_results(self, prediction):
+        if self.loading_dialog:
+            self.loading_dialog.withdraw()
+
+        if not prediction:
+            self.show_toast("AI Assistant", "Not enough data for prediction")
+            return
+
+        # Create dialog to show prediction
+        pred_dialog = ctk.CTkToplevel(self.root)
+        pred_dialog.title("AI Prediction")
+        pred_dialog.geometry("550x650")
+        pred_dialog.transient(self.root)
+        pred_dialog.grab_set()
+
+        # Initialize dialog state early (before any functions that need it)
+        dialog_state = {
+            'img_label': None,
+            'pred_text': None,
+            'score_label': None,
+            'reasons_label': None,
+            'apply_btn': None,
+            'downloaded_path': None,
+            'is_alive': True
+        }
+
+        # Handle dialog close events
+        def on_dialog_close():
+            dialog_state['is_alive'] = False
+            pred_dialog.destroy()
+
+        pred_dialog.protocol("WM_DELETE_WINDOW", on_dialog_close)
+
+        # Header
+        header = ctk.CTkLabel(
+            pred_dialog,
+            text="🔮 AI Predicted Perfect Wallpaper",
+            font=ctk.CTkFont(size=18, weight="bold"),
+            text_color=self.COLORS['accent']
+        )
+        header.pack(pady=(20, 15))
+
+        # Wallpaper thumbnail
         try:
-            # Show loading
-            self.show_toast("AI Assistant", "Predicting perfect wallpaper...")
+            from PIL import Image, ImageTk
+            img_path = Path(prediction['item']['path'])
+            if img_path.exists():
+                img = Image.open(img_path)
+                img.thumbnail((400, 250), Image.Resampling.LANCZOS)
+                photo = ImageTk.PhotoImage(img)
 
-            # Get prediction
-            prediction = self.recommendations.predict_next_wallpaper()
+                img_label = ctk.CTkLabel(pred_dialog, image=photo, text="")
+                img_label.image = photo
+                img_label.pack(pady=10)
+                self.image_references.append(photo)
+                dialog_state['img_label'] = img_label  # Store reference
+        except Exception as e:
+            print(f"Error loading prediction thumbnail: {e}")
 
-            if not prediction:
-                self.show_toast("AI Assistant", "Not enough data for prediction")
+        # AI Prediction text
+        if prediction.get('ai_prediction'):
+            pred_text = ctk.CTkLabel(
+                pred_dialog,
+                text=f"AI thinks:\n\n\"{prediction['ai_prediction']}\"",
+                font=ctk.CTkFont(size=13),
+                text_color=self.COLORS['text_light'],
+                wraplength=450
+            )
+            pred_text.pack(pady=15)
+            dialog_state['pred_text'] = pred_text  # Store reference
+
+        # Score
+        score_label = ctk.CTkLabel(
+            pred_dialog,
+            text=f"Match Score: {prediction['score']:.0f}%",
+            font=ctk.CTkFont(size=16, weight="bold"),
+            text_color=self.COLORS['warning']
+        )
+        score_label.pack(pady=10)
+        dialog_state['score_label'] = score_label  # Store reference
+
+        # Reasons
+        if prediction.get('reasons'):
+            reasons_text = "Why this wallpaper:\n" + "\n".join([f"• {r}" for r in prediction['reasons'][:3]])
+            reasons_label = ctk.CTkLabel(
+                pred_dialog,
+                text=reasons_text,
+                font=ctk.CTkFont(size=12),
+                text_color=self.COLORS['text_muted'],
+                wraplength=450
+            )
+            reasons_label.pack(pady=10)
+            dialog_state['reasons_label'] = reasons_label  # Store reference
+
+        # Apply button
+        def apply_prediction():
+            self._set_wallpaper_from_cache(prediction['item']['path'])
+            dialog_state['is_alive'] = False  # Mark dialog as closed
+            pred_dialog.destroy()
+
+        apply_btn = ctk.CTkButton(
+            pred_dialog,
+            text="✨ Apply Predicted Wallpaper",
+            command=apply_prediction,
+            fg_color=self.COLORS['accent'],
+            height=40
+        )
+        apply_btn.pack(pady=20)
+
+        # Download similar wallpapers section
+        similar_label = ctk.CTkLabel(
+            pred_dialog,
+            text="💡 Download similar wallpapers:",
+            font=ctk.CTkFont(size=13, weight="bold"),
+            text_color=self.COLORS['text_light']
+        )
+        similar_label.pack(pady=(10, 5))
+
+        # Extract search query from AI prediction
+        search_query = prediction.get('ai_prediction', 'wallpaper')
+        # Clean up the query - take first few descriptive words
+        words = search_query.split()[:4]
+        search_query = ' '.join(words)
+
+        # Provider buttons
+        provider_frame = ctk.CTkFrame(pred_dialog, fg_color="transparent")
+        provider_frame.pack(pady=10)
+
+        def make_download_similar(query, provider, state):
+            def handler():
+                # Download in background and update preview
+                import threading
+
+                def download_task():
+                    try:
+                        self.show_toast("Downloading", f"Getting wallpaper from {provider.capitalize()}...")
+
+                        # Download (modify to return path instead of applying)
+                        downloaded_item = self._ai_download_similar(query, provider)
+
+                        if downloaded_item and downloaded_item.get('path'):
+                            # Update UI in main thread
+                            self.root.after(0, lambda: update_preview(downloaded_item, provider))
+                    except Exception as e:
+                        self.root.after(0, lambda: self.show_toast("Error", f"Download failed: {str(e)}"))
+
+                threading.Thread(target=download_task, daemon=True).start()
+
+            return handler
+
+        def update_preview(item, provider):
+            """Update dialog with new downloaded wallpaper"""
+            # Check if dialog is still open
+            if not dialog_state.get('is_alive', False):
+                print("[PREVIEW] Dialog closed, skipping update")
                 return
 
-            # Create dialog to show prediction
-            pred_dialog = ctk.CTkToplevel(self.root)
-            pred_dialog.title("AI Prediction")
-            pred_dialog.geometry("550x650")
-            pred_dialog.transient(self.root)
-            pred_dialog.grab_set()
-
-            # Initialize dialog state early (before any functions that need it)
-            dialog_state = {
-                'img_label': None,
-                'pred_text': None,
-                'score_label': None,
-                'reasons_label': None,
-                'apply_btn': None,
-                'downloaded_path': None,
-                'is_alive': True
-            }
-
-            # Handle dialog close events
-            def on_dialog_close():
-                dialog_state['is_alive'] = False
-                pred_dialog.destroy()
-
-            pred_dialog.protocol("WM_DELETE_WINDOW", on_dialog_close)
-
-            # Header
-            header = ctk.CTkLabel(
-                pred_dialog,
-                text="🔮 AI Predicted Perfect Wallpaper",
-                font=ctk.CTkFont(size=18, weight="bold"),
-                text_color=self.COLORS['accent']
-            )
-            header.pack(pady=(20, 15))
-
-            # Wallpaper thumbnail
             try:
-                from PIL import Image, ImageTk
-                img_path = Path(prediction['item']['path'])
-                if img_path.exists():
-                    img = Image.open(img_path)
-                    img.thumbnail((400, 250), Image.Resampling.LANCZOS)
-                    photo = ImageTk.PhotoImage(img)
+                # Update image
+                if dialog_state['img_label']:
+                    from PIL import Image, ImageTk
+                    img_path = Path(item['path'])
+                    if img_path.exists():
+                        img = Image.open(img_path)
+                        img.thumbnail((400, 250), Image.Resampling.LANCZOS)
+                        photo = ImageTk.PhotoImage(img)
+                        dialog_state['img_label'].configure(image=photo)
+                        dialog_state['img_label'].image = photo
+                        self.image_references.append(photo)
 
-                    img_label = ctk.CTkLabel(pred_dialog, image=photo, text="")
-                    img_label.image = photo
-                    img_label.pack(pady=10)
-                    self.image_references.append(photo)
-                    dialog_state['img_label'] = img_label  # Store reference
-            except Exception as e:
-                print(f"Error loading prediction thumbnail: {e}")
-
-            # AI Prediction text
-            if prediction.get('ai_prediction'):
-                pred_text = ctk.CTkLabel(
-                    pred_dialog,
-                    text=f"AI thinks:\n\n\"{prediction['ai_prediction']}\"",
-                    font=ctk.CTkFont(size=13),
-                    text_color=self.COLORS['text_light'],
-                    wraplength=450
-                )
-                pred_text.pack(pady=15)
-                dialog_state['pred_text'] = pred_text  # Store reference
-
-            # Score
-            score_label = ctk.CTkLabel(
-                pred_dialog,
-                text=f"Match Score: {prediction['score']:.0f}%",
-                font=ctk.CTkFont(size=16, weight="bold"),
-                text_color=self.COLORS['warning']
-            )
-            score_label.pack(pady=10)
-            dialog_state['score_label'] = score_label  # Store reference
-
-            # Reasons
-            if prediction.get('reasons'):
-                reasons_text = "Why this wallpaper:\n" + "\n".join([f"• {r}" for r in prediction['reasons'][:3]])
-                reasons_label = ctk.CTkLabel(
-                    pred_dialog,
-                    text=reasons_text,
-                    font=ctk.CTkFont(size=12),
-                    text_color=self.COLORS['text_muted'],
-                    wraplength=450
-                )
-                reasons_label.pack(pady=10)
-                dialog_state['reasons_label'] = reasons_label  # Store reference
-
-            # Apply button
-            def apply_prediction():
-                self._set_wallpaper_from_cache(prediction['item']['path'])
-                dialog_state['is_alive'] = False  # Mark dialog as closed
-                pred_dialog.destroy()
-
-            apply_btn = ctk.CTkButton(
-                pred_dialog,
-                text="✨ Apply Predicted Wallpaper",
-                command=apply_prediction,
-                fg_color=self.COLORS['accent'],
-                height=40
-            )
-            apply_btn.pack(pady=20)
-
-            # Download similar wallpapers section
-            similar_label = ctk.CTkLabel(
-                pred_dialog,
-                text="💡 Download similar wallpapers:",
-                font=ctk.CTkFont(size=13, weight="bold"),
-                text_color=self.COLORS['text_light']
-            )
-            similar_label.pack(pady=(10, 5))
-
-            # Extract search query from AI prediction
-            search_query = prediction.get('ai_prediction', 'wallpaper')
-            # Clean up the query - take first few descriptive words
-            words = search_query.split()[:4]
-            search_query = ' '.join(words)
-
-            # Provider buttons
-            provider_frame = ctk.CTkFrame(pred_dialog, fg_color="transparent")
-            provider_frame.pack(pady=10)
-
-            def make_download_similar(query, provider, state):
-                def handler():
-                    # Download in background and update preview
-                    import threading
-
-                    def download_task():
-                        try:
-                            self.show_toast("Downloading", f"Getting wallpaper from {provider.capitalize()}...")
-
-                            # Download (modify to return path instead of applying)
-                            downloaded_item = self._ai_download_similar(query, provider)
-
-                            if downloaded_item and downloaded_item.get('path'):
-                                # Update UI in main thread
-                                self.root.after(0, lambda: update_preview(downloaded_item, provider))
-                        except Exception as e:
-                            self.root.after(0, lambda: self.show_toast("Error", f"Download failed: {str(e)}"))
-
-                    threading.Thread(target=download_task, daemon=True).start()
-
-                return handler
-
-            def update_preview(item, provider):
-                """Update dialog with new downloaded wallpaper"""
-                # Check if dialog is still open
-                if not dialog_state.get('is_alive', False):
-                    print("[PREVIEW] Dialog closed, skipping update")
-                    return
-
-                try:
-                    # Update image
-                    if dialog_state['img_label']:
-                        from PIL import Image, ImageTk
-                        img_path = Path(item['path'])
-                        if img_path.exists():
-                            img = Image.open(img_path)
-                            img.thumbnail((400, 250), Image.Resampling.LANCZOS)
-                            photo = ImageTk.PhotoImage(img)
-                            dialog_state['img_label'].configure(image=photo)
-                            dialog_state['img_label'].image = photo
-                            self.image_references.append(photo)
-
-                    # Update text
-                    if dialog_state['pred_text']:
-                        dialog_state['pred_text'].configure(
-                            text=f"Downloaded from {provider.upper()}:\n\n\"{search_query}\""
-                        )
-
-                    # Update score
-                    dialog_state['score_label'].configure(
-                        text=f"✅ Downloaded Successfully",
-                        text_color=self.COLORS['accent']
+                # Update text
+                if dialog_state['pred_text']:
+                    dialog_state['pred_text'].configure(
+                        text=f"Downloaded from {provider.upper()}:\n\n\"{search_query}\""
                     )
 
-                    # Update reasons
-                    if dialog_state['reasons_label']:
-                        dialog_state['reasons_label'].configure(
-                            text=f"Source: {provider.capitalize()}\nQuery: {search_query}\nTags: {', '.join(item.get('tags', []))}"
-                        )
+                # Update score
+                dialog_state['score_label'].configure(
+                    text=f"✅ Downloaded Successfully",
+                    text_color=self.COLORS['accent']
+                )
 
-                    # Store downloaded path
-                    dialog_state['downloaded_path'] = item['path']
+                # Update reasons
+                if dialog_state['reasons_label']:
+                    dialog_state['reasons_label'].configure(
+                        text=f"Source: {provider.capitalize()}\nQuery: {search_query}\nTags: {', '.join(item.get('tags', []))}"
+                    )
 
-                    # Update apply button
-                    if dialog_state['apply_btn']:
-                        dialog_state['apply_btn'].configure(
-                            text="✨ Apply Downloaded Wallpaper",
-                            command=lambda: (self._set_wallpaper_from_cache(item['path']), on_dialog_close())
-                        )
+                # Store downloaded path
+                dialog_state['downloaded_path'] = item['path']
 
-                    self.show_toast("Success", f"Preview updated! Click Apply to use it.")
+                # Update apply button
+                if dialog_state['apply_btn']:
+                    dialog_state['apply_btn'].configure(
+                        text="✨ Apply Downloaded Wallpaper",
+                        command=lambda: (self._set_wallpaper_from_cache(item['path']), on_dialog_close())
+                    )
 
-                except Exception as e:
-                    print(f"Error updating preview: {e}")
-                    self.show_toast("Error", f"Failed to update preview: {str(e)}")
+                self.show_toast("Success", f"Preview updated! Click Apply to use it.")
 
-            pexels_btn = ctk.CTkButton(
-                provider_frame,
-                text="📥 Pexels",
-                width=140,
-                height=35,
-                fg_color=self.COLORS['accent'],
-                hover_color=self.COLORS['sidebar_hover'],
-                command=make_download_similar(search_query, "pexels", dialog_state)
-            )
-            pexels_btn.pack(side="left", padx=5)
+            except Exception as e:
+                print(f"Error updating preview: {e}")
+                self.show_toast("Error", f"Failed to update preview: {str(e)}")
 
-            reddit_btn = ctk.CTkButton(
-                provider_frame,
-                text="📥 Reddit",
-                width=140,
-                height=35,
-                fg_color="#FF4500",
-                hover_color="#CC3700",
-                command=make_download_similar(search_query, "reddit", dialog_state)
-            )
-            reddit_btn.pack(side="left", padx=5)
+        pexels_btn = ctk.CTkButton(
+            provider_frame,
+            text="📥 Pexels",
+            width=140,
+            height=35,
+            fg_color=self.COLORS['accent'],
+            hover_color=self.COLORS['sidebar_hover'],
+            command=make_download_similar(search_query, "pexels", dialog_state)
+        )
+        pexels_btn.pack(side="left", padx=5)
 
-            wallhaven_btn = ctk.CTkButton(
-                provider_frame,
-                text="📥 Wallhaven",
-                width=140,
-                height=35,
-                fg_color="#6C5CE7",
-                hover_color="#5A4BC4",
-                command=make_download_similar(search_query, "wallhaven", dialog_state)
-            )
-            wallhaven_btn.pack(side="left", padx=5)
+        reddit_btn = ctk.CTkButton(
+            provider_frame,
+            text="📥 Reddit",
+            width=140,
+            height=35,
+            fg_color="#FF4500",
+            hover_color="#CC3700",
+            command=make_download_similar(search_query, "reddit", dialog_state)
+        )
+        reddit_btn.pack(side="left", padx=5)
 
-            # Store apply button reference
-            dialog_state['apply_btn'] = apply_btn
+        wallhaven_btn = ctk.CTkButton(
+            provider_frame,
+            text="📥 Wallhaven",
+            width=140,
+            height=35,
+            fg_color="#6C5CE7",
+            hover_color="#5A4BC4",
+            command=make_download_similar(search_query, "wallhaven", dialog_state)
+        )
+        wallhaven_btn.pack(side="left", padx=5)
 
-            # Close button
-            close_btn = ctk.CTkButton(
-                pred_dialog,
-                text="Maybe Later",
-                command=on_dialog_close,  # Use handler that sets is_alive flag
-                fg_color=self.COLORS['sidebar_hover']
-            )
-            close_btn.pack(pady=(15, 20))
+        # Store apply button reference
+        dialog_state['apply_btn'] = apply_btn
 
-        except Exception as e:
-            self.show_toast("Error", f"Prediction failed: {str(e)}")
+        # Close button
+        close_btn = ctk.CTkButton(
+            pred_dialog,
+            text="Maybe Later",
+            command=on_dialog_close,  # Use handler that sets is_alive flag
+            fg_color=self.COLORS['sidebar_hover']
+        )
+        close_btn.pack(pady=(15, 20))
+
+    def _show_predict_wallpaper_error(self, error_msg):
+        if self.loading_dialog:
+            self.loading_dialog.withdraw()
+        self.show_toast("Error", f"Prediction failed: {error_msg}")
 
     def _ai_select_reference_wallpaper(self):
         """📁 Select a reference wallpaper for similarity search"""
@@ -4813,128 +4857,147 @@ class ModernWallpaperGUI:
 
     def _ai_find_similar_wallpapers(self):
         """🎨 Find similar wallpapers using AI style analysis"""
-        if not self.recommendations.model:
-            self.show_toast("Error", "Please configure Gemini API key first")
+        if not self.recommendations.is_ai_available():
+            self.show_toast("Error", "Please configure Gemini API key or enable local AI")
             return
 
         if not hasattr(self, 'ai_similarity_reference') or not self.ai_similarity_reference:
             self.show_toast("Error", "Please select a reference wallpaper first")
             return
 
-        try:
-            self.show_toast("AI Assistant", "Finding similar wallpapers...")
+        # Create loading dialog if it doesn't exist
+        if self.loading_dialog is None:
+            self.loading_dialog = AILoadingDialog(self.root)
+            self.loading_dialog.withdraw()
 
-            # Get similar wallpapers
-            similar = self.recommendations.get_similar_wallpapers(
-                self.ai_similarity_reference,
-                count=6
-            )
+        # Show loading dialog
+        self.loading_dialog.title("AI Style Similarity")
+        self.loading_dialog.update_status("Finding similar wallpapers...")
+        self.loading_dialog.deiconify()
 
-            if not similar:
-                self.show_toast("AI Assistant", "No similar wallpapers found")
-                return
+        def ai_task():
+            try:
+                similar = self.recommendations.get_similar_wallpapers(
+                    self.ai_similarity_reference,
+                    count=6
+                )
+                self.root.after(0, lambda: self._show_similar_wallpapers_results(similar))
+            except Exception as e:
+                self.root.after(0, lambda: self._show_similar_wallpapers_error(str(e)))
 
-            # Create dialog to show results
-            sim_dialog = ctk.CTkToplevel(self.root)
-            sim_dialog.title("🎨 Similar Wallpapers - AI Style Analysis")
-            sim_dialog.geometry("1000x700")
-            sim_dialog.configure(fg_color=self.COLORS['main_bg'])
+        threading.Thread(target=ai_task, daemon=True).start()
 
-            # Header
-            header = ctk.CTkLabel(
+    def _show_similar_wallpapers_results(self, similar):
+        if self.loading_dialog:
+            self.loading_dialog.withdraw()
+
+        if not similar:
+            self.show_toast("AI Assistant", "No similar wallpapers found")
+            return
+
+        # Create dialog to show results
+        sim_dialog = ctk.CTkToplevel(self.root)
+        sim_dialog.title("🎨 Similar Wallpapers - AI Style Analysis")
+        sim_dialog.geometry("1000x700")
+        sim_dialog.configure(fg_color=self.COLORS['main_bg'])
+
+        # Header
+        header = ctk.CTkLabel(
+            sim_dialog,
+            text=f"Found {len(similar)} Similar Wallpapers",
+            font=ctk.CTkFont(size=18, weight="bold"),
+            text_color=self.COLORS['text_light']
+        )
+        header.pack(pady=(20, 5))
+
+        # AI explanation
+        if similar and 'similarity_reason' in similar[0]:
+            explanation_label = ctk.CTkLabel(
                 sim_dialog,
-                text=f"Found {len(similar)} Similar Wallpapers",
-                font=ctk.CTkFont(size=18, weight="bold"),
-                text_color=self.COLORS['text_light']
+                text=f"AI Analysis: {similar[0]['similarity_reason']}",
+                font=ctk.CTkFont(size=12),
+                text_color=self.COLORS['text_muted'],
+                wraplength=900
             )
-            header.pack(pady=(20, 5))
+            explanation_label.pack(pady=(0, 10))
 
-            # AI explanation
-            if similar and 'similarity_reason' in similar[0]:
-                explanation_label = ctk.CTkLabel(
-                    sim_dialog,
-                    text=f"AI Analysis: {similar[0]['similarity_reason']}",
-                    font=ctk.CTkFont(size=12),
+        # Scrollable frame for results
+        scroll_frame = ctk.CTkScrollableFrame(sim_dialog, fg_color="transparent")
+        scroll_frame.pack(fill="both", expand=True, padx=20, pady=10)
+
+        # Display similar wallpapers in grid
+        for idx, result in enumerate(similar):
+            row = idx // 2
+            col = idx % 2
+
+            card = ctk.CTkFrame(scroll_frame, fg_color=self.COLORS['card_bg'], corner_radius=12)
+            card.grid(row=row, column=col, padx=10, pady=10, sticky="nsew")
+            scroll_frame.grid_columnconfigure(col, weight=1)
+
+            try:
+                # Load thumbnail
+                img_path = Path(result['item']['path'])
+                if img_path.exists():
+                    img = Image.open(img_path)
+                    img.thumbnail((400, 250), Image.Resampling.LANCZOS)
+                    photo = ImageTk.PhotoImage(img)
+
+                    img_label = ctk.CTkLabel(card, image=photo, text="")
+                    img_label.image = photo
+                    img_label.pack(pady=10)
+                    self.image_references.append(photo)
+            except:
+                pass
+
+            # Score
+            score_label = ctk.CTkLabel(
+                card,
+                text=f"Similarity: {result['score']:.0f}%",
+                font=ctk.CTkFont(size=12, weight="bold"),
+                text_color=self.COLORS['warning']
+            )
+            score_label.pack(pady=5)
+
+            # Matching tags
+            if result.get('matching_tags'):
+                tags_text = "Similar: " + ", ".join(result['matching_tags'][:5])
+                tags_label = ctk.CTkLabel(
+                    card,
+                    text=tags_text,
+                    font=ctk.CTkFont(size=10),
                     text_color=self.COLORS['text_muted'],
-                    wraplength=900
+                    wraplength=380
                 )
-                explanation_label.pack(pady=(0, 10))
+                tags_label.pack(pady=5)
 
-            # Scrollable frame for results
-            scroll_frame = ctk.CTkScrollableFrame(sim_dialog, fg_color="transparent")
-            scroll_frame.pack(fill="both", expand=True, padx=20, pady=10)
+            # Apply button
+            def make_apply_handler(path, dialog):
+                def handler():
+                    self._set_wallpaper_from_cache(path)
+                    dialog.destroy()
+                return handler
 
-            # Display similar wallpapers in grid
-            for idx, result in enumerate(similar):
-                row = idx // 2
-                col = idx % 2
-
-                card = ctk.CTkFrame(scroll_frame, fg_color=self.COLORS['card_bg'], corner_radius=12)
-                card.grid(row=row, column=col, padx=10, pady=10, sticky="nsew")
-                scroll_frame.grid_columnconfigure(col, weight=1)
-
-                try:
-                    # Load thumbnail
-                    img_path = Path(result['item']['path'])
-                    if img_path.exists():
-                        img = Image.open(img_path)
-                        img.thumbnail((400, 250), Image.Resampling.LANCZOS)
-                        photo = ImageTk.PhotoImage(img)
-
-                        img_label = ctk.CTkLabel(card, image=photo, text="")
-                        img_label.image = photo
-                        img_label.pack(pady=10)
-                        self.image_references.append(photo)
-                except:
-                    pass
-
-                # Score
-                score_label = ctk.CTkLabel(
-                    card,
-                    text=f"Similarity: {result['score']:.0f}%",
-                    font=ctk.CTkFont(size=12, weight="bold"),
-                    text_color=self.COLORS['warning']
-                )
-                score_label.pack(pady=5)
-
-                # Matching tags
-                if result.get('matching_tags'):
-                    tags_text = "Similar: " + ", ".join(result['matching_tags'][:5])
-                    tags_label = ctk.CTkLabel(
-                        card,
-                        text=tags_text,
-                        font=ctk.CTkFont(size=10),
-                        text_color=self.COLORS['text_muted'],
-                        wraplength=380
-                    )
-                    tags_label.pack(pady=5)
-
-                # Apply button
-                def make_apply_handler(path, dialog):
-                    def handler():
-                        self._set_wallpaper_from_cache(path)
-                        dialog.destroy()
-                    return handler
-
-                apply_btn = ctk.CTkButton(
-                    card,
-                    text="Apply Wallpaper",
-                    command=make_apply_handler(result['item']['path'], sim_dialog),
-                    fg_color=self.COLORS['accent']
-                )
-                apply_btn.pack(pady=10)
-
-            # Close button
-            close_btn = ctk.CTkButton(
-                sim_dialog,
-                text="Close",
-                command=sim_dialog.destroy,
-                fg_color=self.COLORS['sidebar_hover']
+            apply_btn = ctk.CTkButton(
+                card,
+                text="Apply Wallpaper",
+                command=make_apply_handler(result['item']['path'], sim_dialog),
+                fg_color=self.COLORS['accent']
             )
-            close_btn.pack(pady=10)
+            apply_btn.pack(pady=10)
 
-        except Exception as e:
-            self.show_toast("Error", f"Similarity search failed: {str(e)}")
+        # Close button
+        close_btn = ctk.CTkButton(
+            sim_dialog,
+            text="Close",
+            command=sim_dialog.destroy,
+            fg_color=self.COLORS['sidebar_hover']
+        )
+        close_btn.pack(pady=10)
+
+    def _show_similar_wallpapers_error(self, error_msg):
+        if self.loading_dialog:
+            self.loading_dialog.withdraw()
+        self.show_toast("Error", f"Similarity search failed: {error_msg}")
 
     def _ai_select_wallpaper_for_analysis(self):
         """📁 Select a wallpaper for AI analysis"""
@@ -4958,161 +5021,181 @@ class ModernWallpaperGUI:
 
     def _ai_analyze_wallpaper(self):
         """📝 Analyze wallpaper with AI and get creative description"""
-        if not self.recommendations.model:
-            self.show_toast("Error", "Please configure Gemini API key first")
+        if not self.recommendations.is_ai_available():
+            self.show_toast("Error", "Please configure Gemini API key or enable local AI")
             return
 
         if not hasattr(self, 'ai_analysis_path') or not self.ai_analysis_path:
             self.show_toast("Error", "Please select a wallpaper first")
             return
 
-        try:
-            self.show_toast("AI Assistant", "Analyzing wallpaper with AI...")
+        # Create loading dialog if it doesn't exist
+        if self.loading_dialog is None:
+            self.loading_dialog = AILoadingDialog(self.root)
+            self.loading_dialog.withdraw()
 
-            # Get tags for this wallpaper
-            wallpaper_path = Path(self.ai_analysis_path)
-            wallpaper_info = None
+        # Show loading dialog
+        self.loading_dialog.title("AI Wallpaper Analysis")
+        self.loading_dialog.update_status("Analyzing wallpaper with AI...")
+        self.loading_dialog.deiconify()
 
-            for item in self.cache_manager.cache_metadata:
-                if Path(item['path']) == wallpaper_path:
-                    wallpaper_info = item
-                    break
-
-            tags = wallpaper_info.get('tags', []) if wallpaper_info else []
-
-            # Analyze with AI
-            analysis = self.recommendations.analyze_wallpaper_with_ai(
-                str(wallpaper_path),
-                tags
-            )
-
-            # Create dialog to show results
-            analysis_dialog = ctk.CTkToplevel(self.root)
-            analysis_dialog.title("📝 AI Wallpaper Analysis")
-            analysis_dialog.geometry("800x700")
-            analysis_dialog.configure(fg_color=self.COLORS['main_bg'])
-
-            # Header
-            header = ctk.CTkLabel(
-                analysis_dialog,
-                text="🤖 AI Creative Analysis",
-                font=ctk.CTkFont(size=18, weight="bold"),
-                text_color=self.COLORS['text_light']
-            )
-            header.pack(pady=(20, 10))
-
-            # Scrollable content
-            scroll_frame = ctk.CTkScrollableFrame(analysis_dialog, fg_color="transparent")
-            scroll_frame.pack(fill="both", expand=True, padx=20, pady=10)
-
-            # Wallpaper preview
+        def ai_task():
             try:
-                img = Image.open(wallpaper_path)
-                img.thumbnail((700, 300), Image.Resampling.LANCZOS)
-                photo = ImageTk.PhotoImage(img)
+                # Get tags for this wallpaper
+                wallpaper_path = Path(self.ai_analysis_path)
+                wallpaper_info = None
 
-                img_label = ctk.CTkLabel(scroll_frame, image=photo, text="")
-                img_label.image = photo
-                img_label.pack(pady=10)
-                self.image_references.append(photo)
-            except:
-                pass
+                for item in self.cache_manager.cache_metadata:
+                    if Path(item['path']) == wallpaper_path:
+                        wallpaper_info = item
+                        break
 
-            # Description
-            desc_frame = ctk.CTkFrame(scroll_frame, fg_color=self.COLORS['card_bg'])
-            desc_frame.pack(fill="x", pady=10)
+                tags = wallpaper_info.get('tags', []) if wallpaper_info else []
 
-            desc_header = ctk.CTkLabel(
-                desc_frame,
-                text="✨ Creative Description:",
+                # Analyze with AI
+                analysis = self.recommendations.analyze_wallpaper_with_ai(
+                    str(wallpaper_path),
+                    tags
+                )
+                self.root.after(0, lambda: self._show_analysis_results(wallpaper_path, analysis))
+            except Exception as e:
+                self.root.after(0, lambda: self._show_analysis_error(str(e)))
+
+        threading.Thread(target=ai_task, daemon=True).start()
+
+    def _show_analysis_results(self, wallpaper_path, analysis):
+        if self.loading_dialog:
+            self.loading_dialog.withdraw()
+
+        # Create dialog to show results
+        analysis_dialog = ctk.CTkToplevel(self.root)
+        analysis_dialog.title("📝 AI Wallpaper Analysis")
+        analysis_dialog.geometry("800x700")
+        analysis_dialog.configure(fg_color=self.COLORS['main_bg'])
+
+        # Header
+        header = ctk.CTkLabel(
+            analysis_dialog,
+            text="🤖 AI Creative Analysis",
+            font=ctk.CTkFont(size=18, weight="bold"),
+            text_color=self.COLORS['text_light']
+        )
+        header.pack(pady=(20, 10))
+
+        # Scrollable content
+        scroll_frame = ctk.CTkScrollableFrame(analysis_dialog, fg_color="transparent")
+        scroll_frame.pack(fill="both", expand=True, padx=20, pady=10)
+
+        # Wallpaper preview
+        try:
+            img = Image.open(wallpaper_path)
+            img.thumbnail((700, 300), Image.Resampling.LANCZOS)
+            photo = ImageTk.PhotoImage(img)
+
+            img_label = ctk.CTkLabel(scroll_frame, image=photo, text="")
+            img_label.image = photo
+            img_label.pack(pady=10)
+            self.image_references.append(photo)
+        except:
+            pass
+
+        # Description
+        desc_frame = ctk.CTkFrame(scroll_frame, fg_color=self.COLORS['card_bg'])
+        desc_frame.pack(fill="x", pady=10)
+
+        desc_header = ctk.CTkLabel(
+            desc_frame,
+            text="✨ Creative Description:",
+            font=ctk.CTkFont(size=14, weight="bold"),
+            text_color=self.COLORS['text_light']
+        )
+        desc_header.pack(anchor="w", padx=15, pady=(15, 5))
+
+        desc_text = ctk.CTkLabel(
+            desc_frame,
+            text=analysis.get('description', 'No description available'),
+            font=ctk.CTkFont(size=12),
+            text_color=self.COLORS['text_muted'],
+            wraplength=700,
+            justify="left"
+        )
+        desc_text.pack(anchor="w", padx=15, pady=(0, 15))
+
+        # Mood & Style
+        info_frame = ctk.CTkFrame(scroll_frame, fg_color=self.COLORS['card_bg'])
+        info_frame.pack(fill="x", pady=10)
+
+        mood_label = ctk.CTkLabel(
+            info_frame,
+            text=f"🎭 Mood: {analysis.get('mood', 'N/A')}",
+            font=ctk.CTkFont(size=13),
+            text_color=self.COLORS['text_light']
+        )
+        mood_label.pack(anchor="w", padx=15, pady=(15, 5))
+
+        style_label = ctk.CTkLabel(
+            info_frame,
+            text=f"🎨 Style: {analysis.get('style', 'N/A')}",
+            font=ctk.CTkFont(size=13),
+            text_color=self.COLORS['text_light']
+        )
+        style_label.pack(anchor="w", padx=15, pady=(0, 15))
+
+        # Suggested tags
+        if analysis.get('suggested_tags'):
+            tags_frame = ctk.CTkFrame(scroll_frame, fg_color=self.COLORS['card_bg'])
+            tags_frame.pack(fill="x", pady=10)
+
+            tags_header = ctk.CTkLabel(
+                tags_frame,
+                text="🏷️ AI Suggested Tags:",
                 font=ctk.CTkFont(size=14, weight="bold"),
                 text_color=self.COLORS['text_light']
             )
-            desc_header.pack(anchor="w", padx=15, pady=(15, 5))
+            tags_header.pack(anchor="w", padx=15, pady=(15, 10))
 
-            desc_text = ctk.CTkLabel(
-                desc_frame,
-                text=analysis.get('description', 'No description available'),
-                font=ctk.CTkFont(size=12),
-                text_color=self.COLORS['text_muted'],
-                wraplength=700,
-                justify="left"
-            )
-            desc_text.pack(anchor="w", padx=15, pady=(0, 15))
+            tags_container = ctk.CTkFrame(tags_frame, fg_color="transparent")
+            tags_container.pack(fill="x", padx=15, pady=(0, 15))
 
-            # Mood & Style
-            info_frame = ctk.CTkFrame(scroll_frame, fg_color=self.COLORS['card_bg'])
-            info_frame.pack(fill="x", pady=10)
-
-            mood_label = ctk.CTkLabel(
-                info_frame,
-                text=f"🎭 Mood: {analysis.get('mood', 'N/A')}",
-                font=ctk.CTkFont(size=13),
-                text_color=self.COLORS['text_light']
-            )
-            mood_label.pack(anchor="w", padx=15, pady=(15, 5))
-
-            style_label = ctk.CTkLabel(
-                info_frame,
-                text=f"🎨 Style: {analysis.get('style', 'N/A')}",
-                font=ctk.CTkFont(size=13),
-                text_color=self.COLORS['text_light']
-            )
-            style_label.pack(anchor="w", padx=15, pady=(0, 15))
-
-            # Suggested tags
-            if analysis.get('suggested_tags'):
-                tags_frame = ctk.CTkFrame(scroll_frame, fg_color=self.COLORS['card_bg'])
-                tags_frame.pack(fill="x", pady=10)
-
-                tags_header = ctk.CTkLabel(
-                    tags_frame,
-                    text="🏷️ AI Suggested Tags:",
-                    font=ctk.CTkFont(size=14, weight="bold"),
-                    text_color=self.COLORS['text_light']
+            for tag in analysis['suggested_tags']:
+                tag_label = ctk.CTkLabel(
+                    tags_container,
+                    text=tag,
+                    font=ctk.CTkFont(size=11),
+                    text_color=self.COLORS['text_light'],
+                    fg_color=self.COLORS['main_bg'],
+                    corner_radius=6,
+                    padx=10,
+                    pady=5
                 )
-                tags_header.pack(anchor="w", padx=15, pady=(15, 10))
+                tag_label.pack(side="left", padx=5, pady=5)
 
-                tags_container = ctk.CTkFrame(tags_frame, fg_color="transparent")
-                tags_container.pack(fill="x", padx=15, pady=(0, 15))
+        # Apply button
+        def apply_analysis():
+            self._set_wallpaper_from_cache(str(wallpaper_path))
+            analysis_dialog.destroy()
 
-                for tag in analysis['suggested_tags']:
-                    tag_label = ctk.CTkLabel(
-                        tags_container,
-                        text=tag,
-                        font=ctk.CTkFont(size=11),
-                        text_color=self.COLORS['text_light'],
-                        fg_color=self.COLORS['main_bg'],
-                        corner_radius=6,
-                        padx=10,
-                        pady=5
-                    )
-                    tag_label.pack(side="left", padx=5, pady=5)
+        apply_btn = ctk.CTkButton(
+            analysis_dialog,
+            text="Apply This Wallpaper",
+            command=apply_analysis,
+            fg_color=self.COLORS['accent']
+        )
+        apply_btn.pack(pady=10)
 
-            # Apply button
-            def apply_analysis():
-                self._set_wallpaper_from_cache(str(wallpaper_path))
-                analysis_dialog.destroy()
+        # Close button
+        close_btn = ctk.CTkButton(
+            analysis_dialog,
+            text="Close",
+            command=analysis_dialog.destroy,
+            fg_color=self.COLORS['sidebar_hover']
+        )
+        close_btn.pack(pady=(0, 20))
 
-            apply_btn = ctk.CTkButton(
-                analysis_dialog,
-                text="Apply This Wallpaper",
-                command=apply_analysis,
-                fg_color=self.COLORS['accent']
-            )
-            apply_btn.pack(pady=10)
-
-            # Close button
-            close_btn = ctk.CTkButton(
-                analysis_dialog,
-                text="Close",
-                command=analysis_dialog.destroy,
-                fg_color=self.COLORS['sidebar_hover']
-            )
-            close_btn.pack(pady=(0, 20))
-
-        except Exception as e:
-            self.show_toast("Error", f"Analysis failed: {str(e)}")
+    def _show_analysis_error(self, error_msg):
+        if self.loading_dialog:
+            self.loading_dialog.withdraw()
+        self.show_toast("Error", f"Analysis failed: {error_msg}")
 
     def _ai_download_similar(self, query: str, provider: str = "pexels"):
         """Download wallpaper WITHOUT applying - returns item dict"""
@@ -5129,7 +5212,7 @@ class ModernWallpaperGUI:
 
             # Use AI to improve and translate query to English
             original_query = query
-            if self.recommendations and self.recommendations.model:
+            if self.recommendations and self.recommendations.is_ai_available():
                 self.show_toast("AI Assistant", f"Improving search query...")
                 try:
                     improve_prompt = f"""Translate and improve this wallpaper search query to English.

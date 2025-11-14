@@ -3415,7 +3415,8 @@ class ModernWallpaperGUI:
                 viewer,
                 fg_color=self.COLORS['sidebar_bg'],
                 border_width=1,
-                border_color=self.COLORS['accent']
+                border_color=self.COLORS['accent'],
+                width=150  # Match tag_entry width
             )
 
             # Store autocomplete widgets
@@ -3438,11 +3439,25 @@ class ModernWallpaperGUI:
                 matches = sorted([tag for tag in all_tags if text in tag.lower() and tag.lower() not in [t.lower() for t in current_tags]])[:5]
 
                 if matches:
+                    # Update widgets first to get correct positions
+                    tag_entry.update_idletasks()
+
+                    # Position autocomplete below entry (use relative coordinates to action_bar)
+                    # Calculate position relative to viewer window
+                    entry_x = tag_entry.winfo_x()
+                    entry_y = tag_entry.winfo_y()
+
+                    # Get parent positions to calculate absolute position in viewer
+                    parent = tag_entry.master  # tag_frame
+                    while parent and parent != viewer:
+                        entry_x += parent.winfo_x()
+                        entry_y += parent.winfo_y()
+                        parent = parent.master
+
                     # Position autocomplete below entry
                     autocomplete_frame.place(
-                        x=tag_entry.winfo_rootx() - viewer.winfo_rootx(),
-                        y=tag_entry.winfo_rooty() - viewer.winfo_rooty() + tag_entry.winfo_height(),
-                        width=tag_entry.winfo_width()
+                        x=entry_x,
+                        y=entry_y + tag_entry.winfo_height() + 2
                     )
 
                     for match in matches:

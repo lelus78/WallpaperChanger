@@ -1048,7 +1048,24 @@ class ModernWallpaperGUI:
 
             # Get available tags
             tag_counts = get_available_tags()
-            sorted_tags = sorted(tag_counts.items(), key=lambda x: (-x[1], x[0].lower()))
+
+            # Always include selected tags even if they have 0 count after filtering
+            for selected_tag in self.selected_tags:
+                if selected_tag not in tag_counts:
+                    tag_counts[selected_tag] = 0
+
+            # Sort tags: selected tags first (sorted by name), then others (sorted by count)
+            def sort_key(item):
+                tag, count = item
+                is_selected = tag in self.selected_tags
+                # Selected tags: (False, tag_name) - will be first, sorted alphabetically
+                # Non-selected tags: (True, -count, tag_name) - will be after, sorted by count desc
+                if is_selected:
+                    return (False, tag.lower())
+                else:
+                    return (True, -count, tag.lower())
+
+            sorted_tags = sorted(tag_counts.items(), key=sort_key)
 
             # Recreate checkboxes
             for tag, count in sorted_tags:

@@ -198,6 +198,8 @@ class SmartRecommendations:
             else:
                 raise Exception("⚠️ Local AI mode enabled but Ollama is not available.\nPlease install Ollama or disable 'Local AI Only' in settings.")
 
+        fallback_error = None
+
         try:
             # Try Gemini first (cloud mode)
             if self.model:
@@ -205,6 +207,7 @@ class SmartRecommendations:
                 return response.text
         except Exception as e:
             error_msg = str(e)
+            fallback_error = e
             print(f"[AI] Gemini error: {error_msg}")
 
             # Check if it's a quota/rate limit error
@@ -237,9 +240,18 @@ class SmartRecommendations:
                     except requests.exceptions.ConnectionError:
                         # Ollama not installed/not accessible
                         raise Exception(f"⚠️ Gemini quota exceeded (10 requests/min).\n\nCannot connect to Ollama at {self.ollama_host}.\n\nInstall Ollama locally or via Docker:\nDocker: docker run -d -p 11434:11434 ollama/ollama\nThen: docker exec -it <container> ollama pull llama3.2:3b\n\nOr wait 60 seconds and try again.")
-            else:
-                # Re-raise non-quota errors
-                raise
+
+        # Gemini unavailable or failed - try Ollama fallback automatically
+        if self._check_ollama_available():
+            ollama_result = self._generate_with_ollama(prompt)
+            if ollama_result:
+                return ollama_result
+            fallback_error = Exception("⚠️ Local AI generation failed. Please check Ollama is running.")
+
+        if fallback_error:
+            raise fallback_error
+
+        raise Exception("⚠️ No AI providers available. Configure a Gemini API key or install Ollama with at least one model.")
 
     def analyze_user_preferences(self) -> Dict[str, Any]:
         """
@@ -426,7 +438,7 @@ class SmartRecommendations:
         Returns:
             AI-generated suggestion text or None if API is not configured
         """
-        if not self.model:
+        if not self.is_ai_available():
             return None
 
         try:
@@ -457,7 +469,7 @@ Format: One query per line, no numbering or extra text."""
         preferences = self.analyze_user_preferences()
 
         # Use AI if available
-        if self.model:
+        if self.is_ai_available():
             ai_suggestions = self.get_ai_suggestions(preferences)
             if ai_suggestions:
                 # Parse AI response into list
@@ -489,7 +501,7 @@ Format: One query per line, no numbering or extra text."""
         Returns:
             Dictionary with mood analysis and wallpaper suggestions
         """
-        if not self.model:
+        if not self.is_ai_available():
             return {"mood": "neutral", "suggestions": [], "reason": "AI not configured"}
 
         try:
@@ -704,7 +716,7 @@ QUERY3: [2-3 words]"""
         Returns:
             Dictionary with AI-generated description, mood, and suggested tags
         """
-        if not self.model:
+        if not self.is_ai_available():
             return {"description": "", "mood": "", "suggested_tags": [], "style": ""}
 
         try:
@@ -765,7 +777,7 @@ TAGS: [tag1, tag2, tag3, tag4, tag5]"""
         Returns:
             List of matching wallpapers with AI reasoning
         """
-        if not self.model:
+        if not self.is_ai_available():
             return []
 
         try:
@@ -838,7 +850,7 @@ Provide exactly 5 matches."""
         Returns:
             Predicted wallpaper with AI reasoning
         """
-        if not self.model:
+        if not self.is_ai_available():
             return None
 
         try:
@@ -890,7 +902,7 @@ Respond with ONE line describing the ideal wallpaper:
         Returns:
             List of similar wallpapers with similarity scores
         """
-        if not self.model:
+        if not self.is_ai_available():
             return []
 
         try:
@@ -923,8 +935,8 @@ Reference:
 Describe what makes a wallpaper "similar" to this one (style, mood, composition).
 One short sentence:"""
 
-            response = self.model.generate_content(prompt)
-            similarity_criteria = response.text.strip()
+            response_text = self._generate_content(prompt)
+            similarity_criteria = response_text.strip()
 
             # Score wallpapers based on similarity
             similar_wallpapers = []

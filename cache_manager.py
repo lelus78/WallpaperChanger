@@ -18,9 +18,35 @@ class CacheManager:
         self.enable_duplicate_detection = enable_duplicate_detection
         self.duplicate_detector = DuplicateDetector() if enable_duplicate_detection else None
         self.index_path = os.path.join(self.directory, "index.json")
+        self._index_mtime: Optional[float] = None
         self._lock = threading.Lock()
         self._index: Dict[str, List[Dict]] = {"version": 1, "items": []}
         self._load()
+
+    def _get_index_mtime(self) -> Optional[float]:
+        """Return last modification timestamp of the index file."""
+        if os.path.exists(self.index_path):
+            try:
+                return os.path.getmtime(self.index_path)
+            except OSError:
+                return None
+        return None
+
+    def _refresh_index_if_changed(self) -> None:
+        """Reload the cache index if another process updated it."""
+        current_mtime = self._get_index_mtime()
+        if current_mtime is None:
+            return
+        if self._index_mtime is not None and current_mtime <= self._index_mtime:
+            return
+
+        with self._lock:
+            current_mtime = self._get_index_mtime()
+            if current_mtime is None:
+                return
+            if self._index_mtime is not None and current_mtime <= self._index_mtime:
+                return
+            self._load()
 
     def _load(self) -> None:
         if not os.path.exists(self.directory):
@@ -31,12 +57,14 @@ class CacheManager:
                     self._index = json.load(handle)
             except (json.JSONDecodeError, OSError):
                 self._index = {"version": 1, "items": []}
+        self._index_mtime = self._get_index_mtime()
 
     def _save(self) -> None:
         tmp_path = f"{self.index_path}.tmp"
         with open(tmp_path, "w", encoding="utf-8") as handle:
             json.dump(self._index, handle, indent=2)
         os.replace(tmp_path, self.index_path)
+        self._index_mtime = self._get_index_mtime()
 
     def _smart_select_for_removal(self, items: List[Dict], num_to_remove: int) -> List[Dict]:
         """
@@ -197,6 +225,7 @@ class CacheManager:
 
     def get_random(self, preset: Optional[str] = None, monitor_label: Optional[str] = None,
                    banned_paths: Optional[List[str]] = None) -> Optional[Dict]:
+        self._refresh_index_if_changed()
         with self._lock:
             items = list(self._index.get("items", []))
 
@@ -216,17 +245,20 @@ class CacheManager:
         return random.choice(items)
 
     def has_items(self) -> bool:
+        self._refresh_index_if_changed()
         with self._lock:
             return bool(self._index.get("items"))
 
     def list_entries(self) -> List[Dict]:
         """Return list of cached entries, most recent first"""
+        self._refresh_index_if_changed()
         with self._lock:
             items = self._index.get("items", [])
             return list(reversed(items))
 
     def get_all_colors(self) -> List[str]:
         """Get all unique color categories from cached wallpapers"""
+        self._refresh_index_if_changed()
         with self._lock:
             items = self._index.get("items", [])
             colors = set()
@@ -239,6 +271,7 @@ class CacheManager:
 
     def get_by_color(self, color: str) -> List[Dict]:
         """Get wallpapers that contain the specified color"""
+        self._refresh_index_if_changed()
         with self._lock:
             items = self._index.get("items", [])
             filtered = []
@@ -255,6 +288,7 @@ class CacheManager:
         return self.directory
 
     def prune(self) -> None:
+        self._refresh_index_if_changed()
         with self._lock:
             items = self._index.get("items", [])
             if len(items) <= self.max_items:

@@ -115,6 +115,7 @@ class ModernWallpaperGUI:
 
         # View caching for performance
         self._view_cache = {}
+        self.home_stat_labels = {}
 
         # Smart Recommendations system (API key loaded from config)
         from config import GeminiApiKey
@@ -924,7 +925,7 @@ class ModernWallpaperGUI:
         self.stats_manager.data = self.stats_manager._load_data()
 
         # Clean up statistics for wallpapers that no longer exist in cache
-        cached_paths = {item.get('path') for item in valid_cache_items}
+        cached_paths = {item.get('path') for item in valid_cache_items if item.get('path')}
         stats_wallpapers = self.stats_manager.data.get('wallpapers', {})
 
         # Remove stats for wallpapers not in cache anymore
@@ -932,18 +933,29 @@ class ModernWallpaperGUI:
         for path in paths_to_remove:
             del stats_wallpapers[path]
 
-        # Save cleaned statistics
-        if paths_to_remove:
-            self.stats_manager._save_data()
-            print(f"[CLEANUP] Removed {len(paths_to_remove)} orphaned wallpaper stats and tags")
+        # Remove banned entries for missing wallpapers
+        banned_list = self.stats_manager.data.get("banned", [])
+        valid_banned = [path for path in banned_list if path in cached_paths]
+        removed_banned = len(banned_list) - len(valid_banned)
+        if removed_banned:
+            self.stats_manager.data["banned"] = valid_banned
 
-        total_removed = removed_from_cache + len(paths_to_remove)
+        # Save cleaned statistics
+        if paths_to_remove or removed_banned:
+            self.stats_manager._save_data()
+            if paths_to_remove:
+                print(f"[CLEANUP] Removed {len(paths_to_remove)} orphaned wallpaper stats and tags")
+            if removed_banned:
+                print(f"[CLEANUP] Removed {removed_banned} orphaned banned entries")
+
+        total_removed = removed_from_cache + len(paths_to_remove) + removed_banned
         return total_removed
 
     def _refresh_home_data(self):
         """Refresh Home view wallpapers without recreating entire view"""
         # Clean up orphaned statistics
         self._cleanup_orphaned_stats()
+        self._update_home_stat_cards()
 
         # Clear image references to allow new images to load
         self.image_references.clear()
@@ -961,6 +973,46 @@ class ModernWallpaperGUI:
         # If currently on Wallpapers view, reload it
         if self.active_view == "Wallpapers":
             self._load_wallpapers_view()
+
+    def _calculate_home_stats(self) -> Dict[str, int]:
+        """Compute latest counts for Home stat cards."""
+        items = self.cache_manager.list_entries() if self.cache_manager else []
+        cache_paths = {
+            item.get("path")
+            for item in items
+            if item.get("path") and os.path.exists(item.get("path"))
+        }
+        favorites = [
+            path for path in self.stats_manager.get_favorites() if path in cache_paths
+        ]
+        banned = [
+            path for path in self.stats_manager.get_banned_wallpapers()
+            if path in cache_paths
+        ]
+        return {
+            "cache_count": len(cache_paths),
+            "favorites_count": len(favorites),
+            "banned_count": len(banned),
+            "total_changes": self.stats_manager.get_total_changes(),
+        }
+
+    def _update_home_stat_cards(self):
+        """Update stat card labels with the latest counts."""
+        if not getattr(self, "home_stat_labels", None):
+            return
+
+        stats_snapshot = self._calculate_home_stats()
+        label_text = {
+            "cache": f"{stats_snapshot['cache_count']} images",
+            "favorites": f"{stats_snapshot['favorites_count']} favorites",
+            "banned": f"{stats_snapshot['banned_count']} banned",
+            "total_changes": f"{stats_snapshot['total_changes']} times",
+        }
+
+        for key, text in label_text.items():
+            label = self.home_stat_labels.get(key)
+            if label:
+                label.configure(text=text)
 
     def _update_nav_buttons(self):
         """Update navigation button styles"""
@@ -1152,6 +1204,9 @@ class ModernWallpaperGUI:
     def _show_home_view(self):
         """Show enhanced home/dashboard view with statistics and info"""
         self.stats_manager.data = self.stats_manager._load_data()
+        self.home_stat_labels = {}
+        self._cleanup_orphaned_stats()
+        stats_snapshot = self._calculate_home_stats()
         view_container = ctk.CTkFrame(self.content_container, fg_color="transparent")
         view_container.pack(fill="both", expand=True)
         self._view_cache["Home"] = view_container
@@ -1203,10 +1258,10 @@ class ModernWallpaperGUI:
                               self._get_service_status_text(),
                               self._get_service_status_color())
 
-        cache_count = len(self.cache_manager.list_entries()) if self.cache_manager else 0
         self._create_stat_card(stats_frame, 1, "Cached Wallpapers",
-                              f"{cache_count} images",
-                              self.COLORS['accent'])
+                              f"{stats_snapshot['cache_count']} images",
+                              self.COLORS['accent'],
+                              stat_key="cache")
 
         weather_text = self._get_current_weather_text()
         self._create_stat_card(stats_frame, 2, "Current Weather",
@@ -1218,20 +1273,20 @@ class ModernWallpaperGUI:
         for i in range(3):
             stats_frame2.grid_columnconfigure(i, weight=1)
 
-        banned_count = len(self.stats_manager.get_banned_wallpapers())
         self._create_stat_card(stats_frame2, 0, "Banned Wallpapers",
-                              f"{banned_count} banned",
-                              "#ff4444")
+                              f"{stats_snapshot['banned_count']} banned",
+                              "#ff4444",
+                              stat_key="banned")
 
-        favorites_count = len(self.stats_manager.get_favorites())
         self._create_stat_card(stats_frame2, 1, "Favorite Wallpapers",
-                              f"{favorites_count} favorites",
-                              "#ff6b81")
+                              f"{stats_snapshot['favorites_count']} favorites",
+                              "#ff6b81",
+                              stat_key="favorites")
 
-        total_changes = self.stats_manager.get_total_changes()
         self._create_stat_card(stats_frame2, 2, "Total Changes",
-                              f"{total_changes} times",
-                              "#00e676")
+                              f"{stats_snapshot['total_changes']} times",
+                              "#00e676",
+                              stat_key="total_changes")
 
         preview_label = ctk.CTkLabel(
             scrollable,
@@ -1358,7 +1413,7 @@ class ModernWallpaperGUI:
 
         ctk.CTkLabel(scrollable, text="").pack(pady=20)
 
-    def _create_stat_card(self, parent, col, title, value, color):
+    def _create_stat_card(self, parent, col, title, value, color, stat_key: Optional[str] = None):
         """Create a statistics card"""
         card = ctk.CTkFrame(parent, fg_color=self.COLORS['card_bg'], corner_radius=12)
         card.grid(row=0, column=col, padx=10, pady=10, sticky="nsew")
@@ -1370,12 +1425,16 @@ class ModernWallpaperGUI:
             text_color=self.COLORS['text_muted']
         ).pack(pady=(15, 5))
 
-        ctk.CTkLabel(
+        value_label = ctk.CTkLabel(
             card,
             text=value,
             font=ctk.CTkFont(size=16, weight="bold"),
             text_color=color
-        ).pack(pady=(5, 15))
+        )
+        value_label.pack(pady=(5, 15))
+
+        if stat_key:
+            self.home_stat_labels[stat_key] = value_label
 
     def _create_action_card(self, parent, row, col, title, description, color, command):
         """Create an action card button"""
@@ -1537,6 +1596,8 @@ class ModernWallpaperGUI:
     def _create_current_wallpaper_preview(self, parent):
         """Create current wallpaper preview cards showing all monitors"""
         wallpapers = []
+
+        # Try to get wallpapers from API first
         try:
             from main import DesktopWallpaperController
             controller = DesktopWallpaperController()
@@ -1544,6 +1605,75 @@ class ModernWallpaperGUI:
             controller.close()
         except Exception as e:
             pass
+
+        # If no wallpapers detected via API, try to get from cache
+        if not wallpapers:
+            # Get the most recent wallpapers from cache
+            cache_entries = self.cache_manager.list_entries()
+
+            # Try to find recent wallpapers by monitor label
+            monitor_wallpapers = {}
+            for entry in sorted(cache_entries, key=lambda x: x.get('timestamp', ''), reverse=True):
+                monitor_label = entry.get('monitor', '')
+                if monitor_label and monitor_label not in monitor_wallpapers:
+                    # Extract monitor index from label like "Monitor 1", "Monitor 2", etc.
+                    if 'Monitor' in monitor_label:
+                        try:
+                            idx = int(monitor_label.split()[-1]) - 1
+                            monitor_wallpapers[monitor_label] = {
+                                "path": entry.get('path'),
+                                "monitor_index": idx,
+                                "width": 0,
+                                "height": 0,
+                                "is_span": False,
+                                "source_info": entry.get('source_info', ''),
+                                "provider": entry.get('provider', ''),
+                            }
+                        except (ValueError, IndexError):
+                            pass
+
+            if monitor_wallpapers:
+                # Sort by monitor index
+                wallpapers = sorted(monitor_wallpapers.values(), key=lambda x: x.get('monitor_index', 0))
+            else:
+                # Fallback: check for span wallpaper and get last entries from cache
+                span_path = os.path.join(os.path.expanduser("~"), "wallpaper_span.bmp")
+                single_path = os.path.join(os.path.expanduser("~"), "wallpaper_current.bmp")
+
+                if os.path.exists(span_path):
+                    # Get last 2 entries from cache (assuming 2 monitors in span mode)
+                    recent_entries = sorted(cache_entries, key=lambda x: x.get('timestamp', ''), reverse=True)[:2]
+                    if len(recent_entries) >= 2:
+                        # Show individual cached images instead of span composite
+                        wallpapers = [
+                            {
+                                "path": entry.get('path'),
+                                "monitor_index": idx,
+                                "width": 0,
+                                "height": 0,
+                                "is_span": False,
+                                "source_info": entry.get('source_info', ''),
+                                "provider": entry.get('provider', ''),
+                            }
+                            for idx, entry in enumerate(recent_entries)
+                        ]
+                    else:
+                        # Show span wallpaper as single image
+                        wallpapers = [{
+                            "path": span_path,
+                            "monitor_index": 0,
+                            "width": 0,
+                            "height": 0,
+                            "is_span": True
+                        }]
+                elif os.path.exists(single_path):
+                    wallpapers = [{
+                        "path": single_path,
+                        "monitor_index": 0,
+                        "width": 0,
+                        "height": 0,
+                        "is_span": False
+                    }]
 
         if not wallpapers:
             preview_card = ctk.CTkFrame(parent, fg_color=self.COLORS['card_bg'], corner_radius=12)
@@ -1605,9 +1735,18 @@ class ModernWallpaperGUI:
                     info_frame = ctk.CTkFrame(content_frame, fg_color="transparent")
                     info_frame.pack(side="left", fill="both", expand=True)
 
+                    # Check if this is a span wallpaper
+                    is_span = wallpaper_info.get("is_span", False)
+                    if is_span:
+                        monitor_text = "All Monitors (Span Mode)"
+                    elif monitor_width and monitor_height:
+                        monitor_text = f"Monitor {monitor_idx + 1} ({monitor_width}x{monitor_height})"
+                    else:
+                        monitor_text = f"Monitor {monitor_idx + 1}"
+
                     monitor_label = ctk.CTkLabel(
                         info_frame,
-                        text=f"Monitor {monitor_idx + 1} ({monitor_width}x{monitor_height})",
+                        text=monitor_text,
                         font=ctk.CTkFont(size=16, weight="bold"),
                         text_color=self.COLORS['accent']
                     )
@@ -3081,6 +3220,15 @@ class ModernWallpaperGUI:
                 wallpaper_path = bmp_path
 
             if monitor_selection == "All Monitors":
+                # Apply to all monitors using legacy API
+                import winreg
+                try:
+                    key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, r"Control Panel\Desktop", 0, winreg.KEY_SET_VALUE)
+                    winreg.SetValueEx(key, "WallpaperStyle", 0, winreg.REG_SZ, "10")
+                    winreg.SetValueEx(key, "TileWallpaper", 0, winreg.REG_SZ, "0")
+                    winreg.CloseKey(key)
+                except:
+                    pass
                 ctypes.windll.user32.SystemParametersInfoW(20, 0, wallpaper_path, 3)
                 self.show_toast(
                     "Wallpaper Changed",
@@ -3090,26 +3238,13 @@ class ModernWallpaperGUI:
                 )
                 self._show_success_dialog("Wallpaper applied to all monitors!")
             else:
+                # Apply to specific monitor
                 if monitor_idx is None:
                     monitor_idx = int(monitor_selection.split()[1]) - 1
-                if monitors_list is None:
-                    manager = DesktopWallpaperController()
-                    monitors_list = manager.enumerate_monitors()
-                else:
-                    manager = DesktopWallpaperController()
-                if monitor_idx < len(monitors_list):
-                    manager.set_wallpaper(monitors_list[monitor_idx]["id"], wallpaper_path)
-                    manager.close()
-                    self.show_toast(
-                        "Wallpaper Changed",
-                        f"Applied to {monitor_selection}",
-                        original_path,
-                        duration=4000
-                    )
-                    self._show_success_dialog(f"Wallpaper applied to {monitor_selection}!")
-                else:
-                    manager.close()
-                    self._show_error_dialog("Invalid monitor selection")
+
+                # Per-monitor API doesn't work reliably on this system, use span mode directly
+                print(f"[DEBUG] Applying wallpaper to monitor {monitor_idx} using span mode")
+                self._apply_wallpaper_span_mode(wallpaper_path, monitor_idx, original_path, monitor_selection)
 
             self.stats_manager.log_wallpaper_change(
                 original_path,
@@ -3118,6 +3253,153 @@ class ModernWallpaperGUI:
             )
         except Exception as e:
             self._show_error_dialog(f"Failed to apply wallpaper: {e}")
+
+    def _apply_wallpaper_span_mode(self, selected_wallpaper_path: str, target_monitor_idx: int,
+                                   original_path: str, monitor_selection: str):
+        """Apply wallpaper using span mode when per-monitor API is unavailable"""
+        try:
+            from main import enumerate_monitors_user32
+            from PIL import Image, ImageOps
+            import winreg
+            import logging
+
+            logger = logging.getLogger(__name__)
+            logger.info(f"[SPAN MODE] Applying wallpaper to monitor {target_monitor_idx}")
+            logger.info(f"[SPAN MODE] Selected wallpaper: {selected_wallpaper_path}")
+
+            # Get monitor information
+            monitors = enumerate_monitors_user32()
+            if not monitors or target_monitor_idx >= len(monitors):
+                self._show_error_dialog("Could not detect monitors")
+                return
+
+            logger.info(f"[SPAN MODE] Detected {len(monitors)} monitors")
+
+            # Get monitor names from config to map cache entries correctly
+            from config import Monitors as ConfigMonitors
+
+            # Get current wallpapers for other monitors
+            # Try to extract from current span wallpaper first, then fall back to cache
+            current_wallpapers = {}
+            span_path = os.path.join(os.path.expanduser("~"), "wallpaper_span.bmp")
+
+            # Try to extract images from current span wallpaper
+            if os.path.exists(span_path):
+                try:
+                    span_img = Image.open(span_path)
+                    min_left = min(m.get("left", 0) for m in monitors)
+                    min_top = min(m.get("top", 0) for m in monitors)
+
+                    for idx, monitor in enumerate(monitors):
+                        if idx != target_monitor_idx:
+                            # Extract this monitor's region from span image
+                            offset_x = monitor.get("left", 0) - min_left
+                            offset_y = monitor.get("top", 0) - min_top
+                            width = monitor.get("width")
+                            height = monitor.get("height")
+
+                            # Crop the region
+                            region = span_img.crop((offset_x, offset_y, offset_x + width, offset_y + height))
+
+                            # Save to temporary file
+                            import tempfile
+                            temp_path = os.path.join(tempfile.gettempdir(), f"monitor_{idx}_temp.jpg")
+                            region.save(temp_path, "JPEG", quality=95)
+                            current_wallpapers[idx] = temp_path
+                            logger.info(f"[SPAN MODE] Monitor {idx} extracted from span wallpaper")
+
+                    span_img.close()
+                except Exception as e:
+                    logger.warning(f"[SPAN MODE] Could not extract from span: {e}")
+
+            # If extraction failed, fall back to cache
+            if not current_wallpapers:
+                cache_entries = self.cache_manager.list_entries()
+
+                # Build a map of monitor name -> most recent wallpaper path
+                label_to_path = {}
+                for entry in sorted(cache_entries, key=lambda x: x.get('timestamp', ''), reverse=True):
+                    monitor_label = entry.get('monitor', '')
+                    if monitor_label and monitor_label not in label_to_path:
+                        label_to_path[monitor_name] = entry.get('path')
+
+                # Map using config order
+                for idx in range(len(monitors)):
+                    if idx == target_monitor_idx:
+                        continue
+
+                    if idx < len(ConfigMonitors):
+                        monitor_name = ConfigMonitors[idx].get('name', '')
+                        if monitor_name in label_to_path:
+                            current_wallpapers[idx] = label_to_path[monitor_name]
+                            logger.info(f"[SPAN MODE] Monitor {idx} ({monitor_name}) using cache: {label_to_path[monitor_name]}")
+                        else:
+                            logger.warning(f"[SPAN MODE] No wallpaper found for monitor {idx} ({monitor_name})")
+
+            # Calculate canvas size
+            min_left = min(m.get("left", 0) for m in monitors)
+            min_top = min(m.get("top", 0) for m in monitors)
+            max_right = max(m.get("right", m.get("left", 0) + m.get("width", 0)) for m in monitors)
+            max_bottom = max(m.get("bottom", m.get("top", 0) + m.get("height", 0)) for m in monitors)
+
+            total_width = max_right - min_left
+            total_height = max_bottom - min_top
+            composite = Image.new("RGB", (total_width, total_height), color=(0, 0, 0))
+
+            # Render each monitor
+            for idx, monitor in enumerate(monitors):
+                if idx == target_monitor_idx:
+                    # Use selected wallpaper for target monitor
+                    wallpaper_path = selected_wallpaper_path
+                else:
+                    # Use current wallpaper from cache for other monitors
+                    wallpaper_path = current_wallpapers.get(idx)
+                    if not wallpaper_path or not os.path.exists(wallpaper_path):
+                        # Fallback to black if no wallpaper found
+                        continue
+
+                # Render and paste image
+                img = Image.open(wallpaper_path)
+                rgb_image = img.convert("RGB")
+                target_size = (monitor.get("width"), monitor.get("height"))
+                rgb_image = ImageOps.fit(rgb_image, target_size, method=Image.Resampling.LANCZOS)
+
+                offset_x = monitor.get("left", 0) - min_left
+                offset_y = monitor.get("top", 0) - min_top
+                composite.paste(rgb_image, (offset_x, offset_y))
+                rgb_image.close()
+                img.close()
+
+            # Save span wallpaper
+            span_path = os.path.join(os.path.expanduser("~"), "wallpaper_span.bmp")
+            composite.save(span_path, "BMP")
+            composite.close()
+
+            # Set wallpaper style to span mode in registry
+            try:
+                key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, r"Control Panel\Desktop", 0, winreg.KEY_SET_VALUE)
+                winreg.SetValueEx(key, "WallpaperStyle", 0, winreg.REG_SZ, "22")  # Span
+                winreg.SetValueEx(key, "TileWallpaper", 0, winreg.REG_SZ, "0")
+                winreg.CloseKey(key)
+            except Exception as e:
+                pass
+
+            # Apply wallpaper
+            import ctypes
+            result = ctypes.windll.user32.SystemParametersInfoW(20, 0, span_path, 3)
+            if result:
+                self.show_toast(
+                    "Wallpaper Changed",
+                    f"Applied to {monitor_selection} (span mode)",
+                    original_path,
+                    duration=4000
+                )
+                self._show_success_dialog(f"Wallpaper applied to {monitor_selection}!")
+            else:
+                self._show_error_dialog("Failed to apply wallpaper")
+
+        except Exception as e:
+            self._show_error_dialog(f"Failed to apply wallpaper in span mode: {e}")
 
     def _show_success_dialog(self, message: str):
         """Show success message dialog"""

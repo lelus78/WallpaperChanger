@@ -66,21 +66,28 @@ class CacheManager:
         os.replace(tmp_path, self.index_path)
         self._index_mtime = self._get_index_mtime()
 
-    def _smart_select_for_removal(self, items: List[Dict], num_to_remove: int) -> List[Dict]:
+    def _smart_select_for_removal(self, items: List[Dict], num_to_remove: int, exclude_recent_id: Optional[str] = None) -> List[Dict]:
         """
         Intelligently select wallpapers to remove, protecting important ones.
         Priority for removal (from highest to lowest):
         1. Banned wallpapers
         2. Unrated wallpapers with low views and old timestamp
         3. Lowest rated wallpapers
-        Never removes: starred (rating > 0) or favorite wallpapers
+        Never removes: starred (rating > 0) or favorite wallpapers, or the most recently added item
+
+        Args:
+            items: List of cache items
+            num_to_remove: Number of items to remove
+            exclude_recent_id: Optional ID of recently added item to protect from removal
         """
         if not self.stats_manager:
             # Fallback to simple old behavior if no stats manager
-            return items[:num_to_remove]
+            # But still protect the recently added item
+            candidates = [item for item in items if item.get("id") != exclude_recent_id]
+            return candidates[:num_to_remove]
 
         # Categorize wallpapers
-        protected = []  # Starred or favorites
+        protected = []  # Starred or favorites or recently added
         banned = []
         low_priority = []  # Unrated, low views
         normal = []
@@ -88,6 +95,11 @@ class CacheManager:
         for item in items:
             path = item.get("path")
             if not path:
+                continue
+
+            # Protect recently added item from being removed in the same operation
+            if exclude_recent_id and item.get("id") == exclude_recent_id:
+                protected.append(item)
                 continue
 
             # Check stats
@@ -136,24 +148,45 @@ class CacheManager:
 
         with self._lock:
             # Check for duplicates using unique_id (preferred) or source_info (fallback)
+            # BUT: if monitor_index is specified, only match if it's the same monitor
             unique_id = metadata.get("unique_id")
             source_info = metadata.get("source_info")
+            monitor_index = metadata.get("monitor_index")
 
             for item in self._index.get("items", []):
+                # Skip if this is a different monitor - each monitor should have its own wallpaper
+                if monitor_index is not None and item.get("monitor_index") != monitor_index:
+                    continue
+
                 # Check unique_id first (more reliable for same content from different sources)
                 if unique_id and item.get("unique_id") == unique_id:
-                    print(f"[CACHE] Duplicate detected (unique_id), reusing: {os.path.basename(item.get('path'))}")
-                    return item.get("path")
+                    cached_path = item.get("path")
+                    # Verify file still exists before returning it
+                    if cached_path and os.path.exists(cached_path):
+                        print(f"[CACHE] Duplicate detected (unique_id), reusing: {os.path.basename(cached_path)}")
+                        return cached_path
+                    else:
+                        print(f"[CACHE] Duplicate found but file missing, will re-download")
+                        continue
                 # Fallback to source_info for backwards compatibility
                 if source_info and item.get("source_info") == source_info:
-                    print(f"[CACHE] Duplicate detected (source_info), reusing: {os.path.basename(item.get('path'))}")
-                    return item.get("path")
+                    cached_path = item.get("path")
+                    # Verify file still exists before returning it
+                    if cached_path and os.path.exists(cached_path):
+                        print(f"[CACHE] Duplicate detected (source_info), reusing: {os.path.basename(cached_path)}")
+                        return cached_path
+                    else:
+                        print(f"[CACHE] Duplicate found but file missing, will re-download")
+                        continue
 
             # Check for perceptual duplicates (similar images)
+            # Only check duplicates for the same monitor to prevent cross-monitor deduplication
             if self.duplicate_detector:
                 existing_hashes = {item.get('path'): item.get('perceptual_hash')
                                  for item in self._index.get("items", [])
-                                 if item.get('perceptual_hash')}
+                                 if item.get('perceptual_hash') and (
+                                     monitor_index is None or item.get("monitor_index") == monitor_index
+                                 )}
 
                 if existing_hashes:
                     duplicate_result = self.duplicate_detector.is_duplicate(
@@ -163,9 +196,13 @@ class CacheManager:
                     )
                     if duplicate_result:
                         dup_path, distance = duplicate_result
-                        similarity = self.duplicate_detector.get_similarity_description(distance)
-                        print(f"[CACHE] {similarity} image detected (distance={distance}), reusing: {os.path.basename(dup_path)}")
-                        return dup_path
+                        # Verify file still exists before returning it
+                        if os.path.exists(dup_path):
+                            similarity = self.duplicate_detector.get_similarity_description(distance)
+                            print(f"[CACHE] {similarity} image detected (distance={distance}), reusing: {os.path.basename(dup_path)}")
+                            return dup_path
+                        else:
+                            print(f"[CACHE] Similar image found but file missing, will download new")
 
             os.makedirs(self.directory, exist_ok=True)
             extension = os.path.splitext(source_path)[1] or ".jpg"
@@ -204,7 +241,8 @@ class CacheManager:
             items = self._index["items"]
             if len(items) > self.max_items:
                 excess = len(items) - self.max_items
-                to_remove = self._smart_select_for_removal(items, excess)
+                # Protect the newly added item from being immediately removed
+                to_remove = self._smart_select_for_removal(items, excess, exclude_recent_id=cache_id)
 
                 # Remove files from disk
                 for item in to_remove:

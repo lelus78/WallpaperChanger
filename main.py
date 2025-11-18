@@ -903,6 +903,9 @@ class WallpaperApp:
                 except OSError as error:
                     self.logger.error(f"Per-monitor wallpaper initialization failed: {error}")
                     monitors = []
+                    # If enumerate fails, close the manager and use fallback method
+                    manager.close()
+                    manager = None
 
             if not monitors:
                 try:
@@ -1200,7 +1203,13 @@ class WallpaperApp:
         url, source_info, metadata = self._resolve_wallpaper(task)
         download_path = os.path.join(os.path.expanduser("~"), DOWNLOAD_TEMPLATE.format(index=index))
         self._download_wallpaper(url, download_path)
-        cached_path = self.cache_manager.store(download_path, metadata) or download_path
+
+        # Add monitor index to metadata to prevent cache deduplication across monitors
+        # This ensures each monitor gets its own unique wallpaper
+        metadata_with_monitor = dict(metadata)
+        metadata_with_monitor["monitor_index"] = index
+
+        cached_path = self.cache_manager.store(download_path, metadata_with_monitor) or download_path
 
         # For now, let's just write the info for the first monitor
         if index == 0:
@@ -1299,7 +1308,7 @@ class WallpaperApp:
             span_path = os.path.join(home_dir, SPAN_BMP_NAME)
             composite.save(span_path, "BMP")
             composite.close()
-            self._apply_legacy_wallpaper(span_path)
+            self._apply_legacy_wallpaper(span_path, is_span=True)
             return results
 
         finally:
@@ -1340,7 +1349,7 @@ class WallpaperApp:
         span_path = os.path.join(os.path.expanduser("~"), SPAN_BMP_NAME)
         composite.save(span_path, "BMP")
         composite.close()
-        self._apply_legacy_wallpaper(span_path)
+        self._apply_legacy_wallpaper(span_path, is_span=True)
         return results
 
     def _fetch_wallpaper(self, task: Dict) -> Tuple[str, str, Dict]:
@@ -1820,7 +1829,30 @@ class WallpaperApp:
 
         return target_path
 
-    def _apply_legacy_wallpaper(self, image_path: str) -> None:
+    def _apply_legacy_wallpaper(self, image_path: str, is_span: bool = False) -> None:
+        # Set wallpaper style in registry
+        import winreg
+        try:
+            key = winreg.OpenKey(
+                winreg.HKEY_CURRENT_USER,
+                r"Control Panel\Desktop",
+                0,
+                winreg.KEY_SET_VALUE
+            )
+
+            if is_span:
+                # Span mode: wallpaper stretched across all monitors
+                winreg.SetValueEx(key, "WallpaperStyle", 0, winreg.REG_SZ, "22")
+                winreg.SetValueEx(key, "TileWallpaper", 0, winreg.REG_SZ, "0")
+            else:
+                # Fill mode: fill the screen (default)
+                winreg.SetValueEx(key, "WallpaperStyle", 0, winreg.REG_SZ, "10")
+                winreg.SetValueEx(key, "TileWallpaper", 0, winreg.REG_SZ, "0")
+
+            winreg.CloseKey(key)
+        except Exception as e:
+            self.logger.warning(f"Failed to set wallpaper style in registry: {e}")
+
         result = ctypes.windll.user32.SystemParametersInfoW(
             SPI_SETDESKWALLPAPER, 0, image_path, SPIF_UPDATEINIFILE | SPIF_SENDWININICHANGE
         )

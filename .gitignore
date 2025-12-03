@@ -24,6 +24,7 @@ wallpaperchanger.pid
 wallpaperchanger.log
 wallpaperchanger.signal
 gui_config.pid
+gui_modern.pid
 gui_restore.signal
 
 # IDE and editor files
@@ -55,6 +56,7 @@ playlist_manager.py
 # Generated data files
 current_wallpaper_info.json
 wallpaper_stats.json
+monitors_status.json
 
 # Gemini generated files
 .genkit/

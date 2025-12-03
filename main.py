@@ -763,13 +763,40 @@ class WallpaperApp:
     def _write_current_wallpaper_info(self, wallpaper_path: str, metadata: Dict) -> None:
         """Writes the path and metadata of the current wallpaper to a file."""
         try:
-            info = {
+            # Load existing data to preserve other monitors
+            info = {}
+            if os.path.exists(self.current_wallpaper_info_path):
+                try:
+                    with open(self.current_wallpaper_info_path, "r", encoding="utf-8") as f:
+                        info = json.load(f)
+                except (json.JSONDecodeError, OSError):
+                    pass
+
+            # Ensure "monitors" key exists
+            if "monitors" not in info:
+                info["monitors"] = {}
+
+            # Determine monitor index
+            monitor_index = str(metadata.get("monitor_index", 0))
+            
+            # Update specific monitor info
+            info["monitors"][monitor_index] = {
                 "path": wallpaper_path,
                 "timestamp": datetime.utcnow().isoformat(),
                 "metadata": metadata,
             }
+            
+            # Update top-level timestamp to trigger GUI refresh
+            info["last_update"] = datetime.utcnow().isoformat()
+            
+            # Update legacy fields for backward compatibility (using primary monitor)
+            if monitor_index == "0":
+                info["path"] = wallpaper_path
+                info["timestamp"] = datetime.utcnow().isoformat()
+                info["metadata"] = metadata
+
             with open(self.current_wallpaper_info_path, "w", encoding="utf-8") as f:
-                json.dump(info, f)
+                json.dump(info, f, indent=2)
         except Exception as e:
             self.logger.error(f"Error writing current wallpaper info: {e}")
 
@@ -947,6 +974,21 @@ class WallpaperApp:
         except Exception as e:
             self.logger.exception(f"Error changing wallpaper: {e}")
             results = []
+
+        # Write current wallpaper info for all monitors at once
+        batch_updates = []
+        for i, (path, meta) in enumerate(cached_paths_and_metadata):
+            # Ensure monitor_index is in metadata
+            meta_copy = dict(meta)
+            meta_copy["monitor_index"] = i
+            batch_updates.append({
+                "monitor_index": i,
+                "path": path,
+                "metadata": meta_copy
+            })
+        
+        if batch_updates:
+            self._write_monitors_status(batch_updates)
 
         providers_used = sorted({prov for _, prov in results}) or [provider]
         if playlist_name_in_use:
@@ -1185,19 +1227,81 @@ class WallpaperApp:
                     "preset": preset.name,
                     "provider": provider,
                     "provider_candidates": fallback_candidates,
-                    "monitor": None,
-                    "label": "All monitors",
+                    "monitor": {},
+                    "label": "Single Monitor",
                     "query": fallback_query,
                     "playlist": playlist_name,
-                    "playlist_entry": (playlist_step.title or playlist_step.preset) if playlist_step else None,
+                    "playlist_entry": None,
                     "wallhaven": preset.get_wallhaven_settings(),
                     "pexels": preset.get_pexels_settings(),
                     "reddit": preset.get_reddit_settings(),
                     "target_size": self._get_primary_size(),
                 }
             )
-
         return tasks
+
+    def _write_monitors_status(self, updates: List[Dict]) -> None:
+        """Writes the status of all monitors to a dedicated JSON file."""
+        try:
+            status = {
+                "last_update": datetime.utcnow().isoformat(),
+                "monitors": {}
+            }
+
+            for update in updates:
+                idx = str(update["monitor_index"])
+                status["monitors"][idx] = {
+                    "path": update["path"],
+                    "timestamp": datetime.utcnow().isoformat(),
+                    "metadata": update["metadata"]
+                }
+
+            # Write to the new dedicated file
+            status_path = os.path.join(self.app_dir, "monitors_status.json")
+            with open(status_path, "w", encoding="utf-8") as f:
+                json.dump(status, f, indent=2)
+                
+            # Also update the legacy file for backward compatibility
+            self._write_wallpaper_info_batch(updates)
+            
+        except Exception as e:
+            self.logger.error(f"Error writing monitors status: {e}")
+
+    def _write_wallpaper_info_batch(self, updates: List[Dict]) -> None:
+        """Writes wallpaper info for multiple monitors in one go (Legacy)."""
+        try:
+            info = {}
+            if os.path.exists(self.current_wallpaper_info_path):
+                try:
+                    with open(self.current_wallpaper_info_path, "r", encoding="utf-8") as f:
+                        info = json.load(f)
+                except Exception:
+                    pass
+
+            if "monitors" not in info:
+                info["monitors"] = {}
+
+            for update in updates:
+                idx = str(update["monitor_index"])
+                info["monitors"][idx] = {
+                    "path": update["path"],
+                    "timestamp": datetime.utcnow().isoformat(),
+                    "metadata": update["metadata"]
+                }
+
+            info["last_update"] = datetime.utcnow().isoformat()
+
+            # Legacy fallback (use first update)
+            if updates:
+                first = updates[0]
+                info["path"] = first["path"]
+                info["timestamp"] = datetime.utcnow().isoformat()
+                info["metadata"] = first["metadata"]
+
+            with open(self.current_wallpaper_info_path, "w", encoding="utf-8") as f:
+                json.dump(info, f, indent=2)
+        except Exception as e:
+            self.logger.error(f"Error batch writing wallpaper info: {e}")
 
     def _process_task(self, task: Dict, index: int, manager: DesktopWallpaperController) -> Tuple[str, str, str, Dict]:
         url, source_info, metadata = self._resolve_wallpaper(task)
@@ -1211,9 +1315,8 @@ class WallpaperApp:
 
         cached_path = self.cache_manager.store(download_path, metadata_with_monitor) or download_path
 
-        # For now, let's just write the info for the first monitor
-        if index == 0:
-            self._write_current_wallpaper_info(cached_path, metadata)
+        # Note: We no longer write info here to avoid race conditions. 
+        # It is handled in change_wallpaper via _write_wallpaper_info_batch
 
         if cached_path != download_path:
             with suppress(OSError):
@@ -1229,7 +1332,7 @@ class WallpaperApp:
         self._download_wallpaper(url, download_path)
         cached_path = self.cache_manager.store(download_path, metadata) or download_path
 
-        self._write_current_wallpaper_info(cached_path, metadata)
+        # Note: We no longer write info here. Handled in change_wallpaper.
 
         if cached_path != download_path:
             with suppress(OSError):

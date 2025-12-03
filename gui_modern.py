@@ -534,7 +534,17 @@ class ModernWallpaperGUI:
             empty_label.grid(row=0, column=0, columnspan=4, pady=100)
             return
 
-        items = self.cache_manager.list_entries()
+        all_items = self.cache_manager.list_entries()
+
+        # Deduplicate by path - keep only the most recent entry for each unique path
+        seen_paths = {}
+        items = []
+        for item in all_items:
+            path = item.get("path")
+            if path and path not in seen_paths:
+                seen_paths[path] = True
+                items.append(item)
+
         sort_choice = self.sort_var.get() if hasattr(self, 'sort_var') else "Newest First"
         provider_filter = self.provider_filter_var.get() if hasattr(self, 'provider_filter_var') else "All Providers"
         color_filter = self.color_filter_var.get() if hasattr(self, 'color_filter_var') else "All Colors"

@@ -10,17 +10,21 @@ A modern, feature-rich wallpaper manager for Windows that automatically download
 - **Fullscreen Viewer** - Click any wallpaper to view in full resolution
 - **Tag System** - Auto-extracted tags from providers for easy filtering
 - **Color Filtering** - Filter wallpapers by dominant color with visual color badges
-- **Duplicate Detection** - Find and manage similar wallpapers with adjustable sensitivity
+- **Duplicate Detection** - Find and manage similar wallpapers with adjustable sensitivity (Exact, Nearly Identical, Very Similar, Similar, Somewhat Similar)
+- **Instant Duplicate Removal** - Delete duplicates with zero lag, no rescanning required
 - **Statistics Dashboard** - Track usage, favorites, and view distribution charts
 - **Rating & Favorites** - 5-star rating system and favorites management
 - **Wallpaper Deletion** - Permanently remove unwanted wallpapers with confirmation dialog
 
 ### Smart Wallpaper Management
-- **Multi-Monitor Support** - Different wallpapers for each monitor
+- **Multi-Monitor Support** - Different wallpapers for each monitor with cross-monitor duplicate prevention
 - **Auto-Download** - Fresh wallpapers from Wallhaven, Reddit, and Pexels
 - **Multi-Provider Downloads** - Instant download buttons for all three providers in search and AI features
 - **Smart Caching** - Intelligent cache rotation that protects starred and favorite wallpapers
-- **Duplicate Prevention** - Automatic detection using perceptual hashing to avoid re-downloading similar images
+- **Advanced Duplicate Prevention** - Automatic detection using perceptual hashing with cross-monitor blocking (threshold: distance ≤ 3)
+  - Prevents downloading same wallpaper for different monitors automatically
+  - User can still manually apply same wallpaper via GUI if desired
+  - Stricter "Nearly Identical" threshold for better duplicate detection
 - **Color Extraction** - Fast color analysis (100x faster) with dominant color identification
 - **Weather Overlays** - Display current temperature on wallpapers
 - **Playlists** - Create themed collections for different moods/times
@@ -186,6 +190,40 @@ Expected output:
 - Display in gallery with 🏷️ emoji
 - Filter wallpapers by clicking tags
 - Works with AI-downloaded wallpapers
+
+### Duplicate Detection & Management
+
+**Automatic Prevention During Download:**
+- Cross-monitor duplicate detection prevents downloading the same wallpaper for different monitors
+- Uses perceptual hashing with "Nearly Identical" threshold (distance ≤ 3)
+- Works automatically in the background - no user intervention needed
+- User can still manually apply same wallpaper to multiple monitors via GUI
+
+**Manual Duplicate Scanning:**
+1. Go to **Duplicates** tab in the GUI
+2. Select sensitivity level:
+   - **Exact** (distance = 0) - Only identical files
+   - **Nearly Identical** (distance ≤ 3) - Extremely similar (default for auto-prevention)
+   - **Very Similar** (distance ≤ 5) - Minor edits, compression differences
+   - **Similar** (distance ≤ 10) - Similar composition/content
+   - **Somewhat Similar** (distance ≤ 15) - Some visual similarities
+3. Click **"Scan for Duplicates"**
+4. Review side-by-side comparisons
+5. Click **"Delete"** on duplicates - instant removal with zero lag!
+
+**Performance:**
+- Instant deletion (no rescanning after each removal)
+- Perceptual hashing cached for fast comparisons
+- Test with `python test_duplicate_prevention.py` to verify cross-monitor blocking
+
+**Command-Line Tools:**
+```bash
+# Find and list all duplicates
+python find_duplicates.py
+
+# Populate perceptual hashes for existing wallpapers
+python populate_colors.py  # Also includes hash computation
+```
 
 ## Configuration Highlights (`config.py`)
 

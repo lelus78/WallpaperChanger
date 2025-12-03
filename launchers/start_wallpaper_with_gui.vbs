@@ -10,5 +10,5 @@ objShell.Run "pythonw """ & parentDir & "\main.py""", 0, False
 ' Wait a moment for the main app to initialize
 WScript.Sleep 1000
 
-' Start the configuration GUI
-objShell.Run "pythonw """ & parentDir & "\gui_config.py""", 0, False
+' Start the modern GUI
+objShell.Run "pythonw """ & parentDir & "\gui_modern.py""", 0, False

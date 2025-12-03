@@ -150,15 +150,31 @@ class ModernWallpaperGUI:
     def _monitor_wallpaper_changes(self):
         """Periodically check for wallpaper changes and auto-refresh Home view."""
         try:
-            info_path = Path(__file__).parent / "current_wallpaper_info.json"
-            if info_path.exists():
+            # Priority: Check the new monitors_status.json
+            status_path = Path(__file__).parent / "monitors_status.json"
+            if status_path.exists():
+                with open(status_path, "r", encoding="utf-8") as f:
+                    import json
+                    data = json.load(f)
+                    # Check global last_update timestamp
+                    last_update = data.get("last_update")
+                    
+                    if last_update and last_update != self.last_known_wallpaper_path:
+                        self.last_known_wallpaper_path = last_update
+                        if self.active_view == "Home":
+                            self.root.after(100, self._refresh_home_data)
+                            
+            # Fallback: Check legacy file if new one doesn't exist
+            elif (Path(__file__).parent / "current_wallpaper_info.json").exists():
+                info_path = Path(__file__).parent / "current_wallpaper_info.json"
                 with open(info_path, "r", encoding="utf-8") as f:
                     import json
                     data = json.load(f)
-                    current_path = data.get("path")
+                    # Check for last_update first (new format), then path (old format)
+                    current_val = data.get("last_update") or data.get("path")
 
-                    if current_path and current_path != self.last_known_wallpaper_path:
-                        self.last_known_wallpaper_path = current_path
+                    if current_val and current_val != self.last_known_wallpaper_path:
+                        self.last_known_wallpaper_path = current_val
                         if self.active_view == "Home":
                             # Refresh home data on the main thread
                             self.root.after(100, self._refresh_home_data)
@@ -1486,86 +1502,6 @@ class ModernWallpaperGUI:
         except:
             return "N/A"
 
-    def _create_current_wallpaper_preview_fast(self, parent):
-        """Create wallpaper preview with optimizations using the info file."""
-        wallpaper_path = None
-        try:
-            info_path = Path(__file__).parent / "current_wallpaper_info.json"
-            if info_path.exists():
-                with open(info_path, "r", encoding="utf-8") as f:
-                    import json
-                    data = json.load(f)
-                    wallpaper_path = data.get("path")
-        except Exception:
-            pass
-
-        if not wallpaper_path or not os.path.exists(wallpaper_path):
-            preview_card = ctk.CTkFrame(parent, fg_color=self.COLORS['card_bg'], corner_radius=12)
-            preview_card.pack(fill="x", pady=10)
-            ctk.CTkLabel(
-                preview_card,
-                text="Unable to detect current wallpaper from info file.",
-                font=ctk.CTkFont(size=14),
-                text_color=self.COLORS['text_muted']
-            ).pack(pady=30)
-            return
-
-        preview_card = ctk.CTkFrame(parent, fg_color=self.COLORS['card_bg'], corner_radius=12)
-        preview_card.pack(fill="x", pady=10)
-
-        try:
-            content_frame = ctk.CTkFrame(preview_card, fg_color="transparent")
-            content_frame.pack(fill="both", padx=20, pady=20)
-
-            image_frame = ctk.CTkFrame(content_frame, fg_color=self.COLORS['main_bg'], corner_radius=8)
-            image_frame.pack(side="left", padx=(0, 20))
-
-            self._create_image_preview_fast(image_frame, wallpaper_path, size=(200, 120))
-
-            info_frame = ctk.CTkFrame(content_frame, fg_color="transparent")
-            info_frame.pack(side="left", fill="both", expand=True)
-
-            monitor_label = ctk.CTkLabel(
-                info_frame,
-                text="Current Wallpaper (Primary)",
-                font=ctk.CTkFont(size=16, weight="bold"),
-                text_color=self.COLORS['text_light']
-            )
-            monitor_label.pack(anchor="w", pady=(0, 10))
-
-            file_name = os.path.basename(wallpaper_path)
-            name_label = ctk.CTkLabel(
-                info_frame,
-                text=f"📄 {file_name[:50]}{'...' if len(file_name) > 50 else ''}",
-                font=ctk.CTkFont(size=13),
-                text_color=self.COLORS['text_muted'],
-                anchor="w"
-            )
-            name_label.pack(anchor="w", pady=2)
-
-            btn_frame = ctk.CTkFrame(info_frame, fg_color="transparent")
-            btn_frame.pack(anchor="w", pady=(10, 0))
-
-            change_btn = ctk.CTkButton(
-                btn_frame,
-                text="Change",
-                width=80,
-                height=28,
-                fg_color=self.COLORS['accent'],
-                hover_color=self.COLORS['sidebar_hover'],
-                command=self._change_wallpaper_now
-            )
-            change_btn.pack(side="left", padx=(0, 10))
-
-        except Exception:
-            error_label = ctk.CTkLabel(
-                preview_card,
-                text="Error displaying current wallpaper",
-                font=ctk.CTkFont(size=14),
-                text_color=self.COLORS['text_muted']
-            )
-            error_label.pack(pady=30)
-
     def _create_image_preview_fast(self, parent, image_path, size=(200, 120)):
         """Create fast image preview with aggressive caching"""
         try:
@@ -1593,6 +1529,149 @@ class ModernWallpaperGUI:
             )
             error_label.pack(expand=True, pady=50)
 
+    def _create_current_wallpaper_preview_fast(self, parent):
+        """Create wallpaper preview with optimizations using the info file."""
+        monitors_data = {}
+        
+        # Try reading from new monitors_status.json first
+        try:
+            status_path = Path(__file__).parent / "monitors_status.json"
+            if status_path.exists():
+                with open(status_path, "r", encoding="utf-8") as f:
+                    import json
+                    data = json.load(f)
+                    monitors_data = data.get("monitors", {})
+        except Exception:
+            pass
+
+        # Fallback to current_wallpaper_info.json if no data found
+        if not monitors_data:
+            try:
+                info_path = Path(__file__).parent / "current_wallpaper_info.json"
+                if info_path.exists():
+                    with open(info_path, "r", encoding="utf-8") as f:
+                        import json
+                        data = json.load(f)
+                        monitors_data = data.get("monitors", {})
+                        
+                        # Legacy single monitor fallback
+                        if not monitors_data and data.get("path"):
+                            monitors_data = {
+                                "0": {
+                                    "path": data.get("path"),
+                                    "metadata": data.get("metadata", {})
+                                }
+                            }
+            except Exception:
+                pass
+
+        if not monitors_data:
+            preview_card = ctk.CTkFrame(parent, fg_color=self.COLORS['card_bg'], corner_radius=12)
+            preview_card.pack(fill="x", pady=10)
+            ctk.CTkLabel(
+                preview_card,
+                text="Unable to detect current wallpaper info.",
+                font=ctk.CTkFont(size=14),
+                text_color=self.COLORS['text_muted']
+            ).pack(pady=30)
+            return
+
+        # Sort monitors by index
+        sorted_indices = sorted(monitors_data.keys(), key=lambda x: int(x))
+        
+        for idx in sorted_indices:
+            monitor_info = monitors_data[idx]
+            wallpaper_path = monitor_info.get("path")
+            
+            if not wallpaper_path or not os.path.exists(wallpaper_path):
+                continue
+                
+            metadata = monitor_info.get("metadata", {})
+            
+            preview_card = ctk.CTkFrame(parent, fg_color=self.COLORS['card_bg'], corner_radius=12)
+            preview_card.pack(fill="x", pady=10)
+
+            # Content container
+            content = ctk.CTkFrame(preview_card, fg_color="transparent")
+            content.pack(fill="x", padx=15, pady=15)
+
+            # Left side: Image Preview
+            try:
+                # Load and resize image for preview
+                pil_image = Image.open(wallpaper_path)
+                # Maintain aspect ratio
+                aspect = pil_image.width / pil_image.height
+                target_height = 120
+                target_width = int(target_height * aspect)
+                # Limit width
+                if target_width > 250:
+                    target_width = 250
+                    target_height = int(target_width / aspect)
+                
+                ctk_image = ctk.CTkImage(light_image=pil_image, dark_image=pil_image, size=(target_width, target_height))
+                
+                img_label = ctk.CTkLabel(content, text="", image=ctk_image)
+                img_label.pack(side="left", padx=(0, 15))
+                
+                # Keep reference
+                self.image_references.append(ctk_image)
+                
+            except Exception as e:
+                print(f"Error loading preview: {e}")
+                ctk.CTkLabel(content, text="[Image Error]", width=160, height=90).pack(side="left", padx=(0, 15))
+
+            # Right side: Info
+            info_frame = ctk.CTkFrame(content, fg_color="transparent")
+            info_frame.pack(side="left", fill="both", expand=True)
+
+            # Monitor Label
+            monitor_label = f"Monitor {int(idx) + 1}"
+            if metadata.get("monitor") and isinstance(metadata.get("monitor"), dict):
+                 pass
+            elif metadata.get("monitor") and isinstance(metadata.get("monitor"), str):
+                 monitor_label = metadata.get("monitor")
+
+            ctk.CTkLabel(
+                info_frame, 
+                text=monitor_label, 
+                font=ctk.CTkFont(size=16, weight="bold"),
+                text_color=self.COLORS['text_light'],
+                anchor="w"
+            ).pack(fill="x")
+
+            # Source Info
+            source_text = "Unknown Source"
+            if metadata.get("source_info"):
+                source_text = metadata.get("source_info")
+                # Truncate if too long
+                if len(source_text) > 60:
+                    source_text = source_text[:57] + "..."
+            
+            ctk.CTkLabel(
+                info_frame,
+                text=source_text,
+                font=ctk.CTkFont(size=13),
+                text_color=self.COLORS['text_muted'],
+                anchor="w"
+            ).pack(fill="x", pady=(2, 0))
+
+            # Provider Badge
+            provider = metadata.get("provider", "unknown").upper()
+            provider_color = self.COLORS['accent']
+            if provider == "WALLHAVEN": provider_color = "#4CAF50" # Green
+            elif provider == "PEXELS": provider_color = "#05A081" # Teal
+            elif provider == "REDDIT": provider_color = "#FF4500" # Orange-Red
+            
+            badge = ctk.CTkLabel(
+                info_frame,
+                text=f" {provider} ",
+                fg_color=provider_color,
+                text_color="#FFFFFF",
+                corner_radius=6,
+                font=ctk.CTkFont(size=11, weight="bold")
+            )
+            badge.pack(anchor="w", pady=(8, 0))
+
     def _create_current_wallpaper_preview(self, parent):
         """Create current wallpaper preview cards showing all monitors"""
         wallpapers = []
@@ -1606,66 +1685,50 @@ class ModernWallpaperGUI:
         except Exception as e:
             pass
 
-        # If no wallpapers detected via API, try to get from cache
+        # If no wallpapers detected via API, try to get from cache using config mapping
         if not wallpapers:
-            # Get the most recent wallpapers from cache
+            from config import Monitors as ConfigMonitors
+
             cache_entries = self.cache_manager.list_entries()
 
-            # Try to find recent wallpapers by monitor label
-            monitor_wallpapers = {}
+            # Build map of monitor name -> most recent wallpaper
+            label_to_entry = {}
             for entry in sorted(cache_entries, key=lambda x: x.get('timestamp', ''), reverse=True):
                 monitor_label = entry.get('monitor', '')
-                if monitor_label and monitor_label not in monitor_wallpapers:
-                    # Extract monitor index from label like "Monitor 1", "Monitor 2", etc.
-                    if 'Monitor' in monitor_label:
-                        try:
-                            idx = int(monitor_label.split()[-1]) - 1
-                            monitor_wallpapers[monitor_label] = {
-                                "path": entry.get('path'),
-                                "monitor_index": idx,
-                                "width": 0,
-                                "height": 0,
-                                "is_span": False,
-                                "source_info": entry.get('source_info', ''),
-                                "provider": entry.get('provider', ''),
-                            }
-                        except (ValueError, IndexError):
-                            pass
+                if monitor_label and monitor_label not in label_to_entry:
+                    label_to_entry[monitor_label] = entry
+
+            # Map monitors using config order
+            monitor_wallpapers = []
+            for idx, monitor_config in enumerate(ConfigMonitors):
+                monitor_name = monitor_config.get('name', '')
+                if monitor_name in label_to_entry:
+                    entry = label_to_entry[monitor_name]
+                    monitor_wallpapers.append({
+                        "path": entry.get('path'),
+                        "monitor_index": idx,
+                        "width": 0,
+                        "height": 0,
+                        "is_span": False,
+                        "source_info": entry.get('source_info', ''),
+                        "provider": entry.get('provider', ''),
+                    })
 
             if monitor_wallpapers:
-                # Sort by monitor index
-                wallpapers = sorted(monitor_wallpapers.values(), key=lambda x: x.get('monitor_index', 0))
+                wallpapers = monitor_wallpapers
             else:
-                # Fallback: check for span wallpaper and get last entries from cache
+                # Fallback: show span image or single wallpaper
                 span_path = os.path.join(os.path.expanduser("~"), "wallpaper_span.bmp")
                 single_path = os.path.join(os.path.expanduser("~"), "wallpaper_current.bmp")
 
                 if os.path.exists(span_path):
-                    # Get last 2 entries from cache (assuming 2 monitors in span mode)
-                    recent_entries = sorted(cache_entries, key=lambda x: x.get('timestamp', ''), reverse=True)[:2]
-                    if len(recent_entries) >= 2:
-                        # Show individual cached images instead of span composite
-                        wallpapers = [
-                            {
-                                "path": entry.get('path'),
-                                "monitor_index": idx,
-                                "width": 0,
-                                "height": 0,
-                                "is_span": False,
-                                "source_info": entry.get('source_info', ''),
-                                "provider": entry.get('provider', ''),
-                            }
-                            for idx, entry in enumerate(recent_entries)
-                        ]
-                    else:
-                        # Show span wallpaper as single image
-                        wallpapers = [{
-                            "path": span_path,
-                            "monitor_index": 0,
-                            "width": 0,
-                            "height": 0,
-                            "is_span": True
-                        }]
+                    wallpapers = [{
+                        "path": span_path,
+                        "monitor_index": 0,
+                        "width": 0,
+                        "height": 0,
+                        "is_span": True
+                    }]
                 elif os.path.exists(single_path):
                     wallpapers = [{
                         "path": single_path,
@@ -3278,63 +3341,68 @@ class ModernWallpaperGUI:
             # Get monitor names from config to map cache entries correctly
             from config import Monitors as ConfigMonitors
 
-            # Get current wallpapers for other monitors
-            # Try to extract from current span wallpaper first, then fall back to cache
+            # Get current wallpapers for other monitors from cache
             current_wallpapers = {}
-            span_path = os.path.join(os.path.expanduser("~"), "wallpaper_span.bmp")
+            current_wallpaper_temp_files = {}  # Maps idx -> temp file for rendering
+            cache_entries = self.cache_manager.list_entries()
 
-            # Try to extract images from current span wallpaper
+            # Build a map of monitor name -> most recent wallpaper entry
+            label_to_entry = {}
+            for entry in sorted(cache_entries, key=lambda x: x.get('timestamp', ''), reverse=True):
+                monitor_label = entry.get('monitor', '')
+                if monitor_label and monitor_label not in label_to_entry:
+                    label_to_entry[monitor_label] = entry
+
+            # Map using config order and extract from span for rendering
+            span_path = os.path.join(os.path.expanduser("~"), "wallpaper_span.bmp")
+            span_img = None
             if os.path.exists(span_path):
                 try:
                     span_img = Image.open(span_path)
-                    min_left = min(m.get("left", 0) for m in monitors)
-                    min_top = min(m.get("top", 0) for m in monitors)
+                except:
+                    pass
 
-                    for idx, monitor in enumerate(monitors):
-                        if idx != target_monitor_idx:
-                            # Extract this monitor's region from span image
-                            offset_x = monitor.get("left", 0) - min_left
-                            offset_y = monitor.get("top", 0) - min_top
-                            width = monitor.get("width")
-                            height = monitor.get("height")
+            for idx in range(len(monitors)):
+                if idx == target_monitor_idx:
+                    continue
 
-                            # Crop the region
-                            region = span_img.crop((offset_x, offset_y, offset_x + width, offset_y + height))
+                if idx < len(ConfigMonitors):
+                    monitor_name = ConfigMonitors[idx].get('name', '')
 
-                            # Save to temporary file
-                            import tempfile
-                            temp_path = os.path.join(tempfile.gettempdir(), f"monitor_{idx}_temp.jpg")
-                            region.save(temp_path, "JPEG", quality=95)
-                            current_wallpapers[idx] = temp_path
-                            logger.info(f"[SPAN MODE] Monitor {idx} extracted from span wallpaper")
+                    # Get original wallpaper path from cache
+                    if monitor_name in label_to_entry:
+                        entry = label_to_entry[monitor_name]
+                        original_path = entry.get('path')
+                        current_wallpapers[idx] = original_path
+                        logger.info(f"[SPAN MODE] Monitor {idx} ({monitor_name}) original from cache: {original_path}")
 
-                    span_img.close()
-                except Exception as e:
-                    logger.warning(f"[SPAN MODE] Could not extract from span: {e}")
+                        # Also extract from span for rendering (to get the exact version with overlays)
+                        if span_img:
+                            try:
+                                min_left = min(m.get("left", 0) for m in monitors)
+                                min_top = min(m.get("top", 0) for m in monitors)
+                                monitor = monitors[idx]
+                                offset_x = monitor.get("left", 0) - min_left
+                                offset_y = monitor.get("top", 0) - min_top
+                                width = monitor.get("width")
+                                height = monitor.get("height")
 
-            # If extraction failed, fall back to cache
-            if not current_wallpapers:
-                cache_entries = self.cache_manager.list_entries()
+                                # Crop the region
+                                region = span_img.crop((offset_x, offset_y, offset_x + width, offset_y + height))
 
-                # Build a map of monitor name -> most recent wallpaper path
-                label_to_path = {}
-                for entry in sorted(cache_entries, key=lambda x: x.get('timestamp', ''), reverse=True):
-                    monitor_label = entry.get('monitor', '')
-                    if monitor_label and monitor_label not in label_to_path:
-                        label_to_path[monitor_name] = entry.get('path')
+                                # Save to temporary file for rendering
+                                import tempfile
+                                temp_path = os.path.join(tempfile.gettempdir(), f"monitor_{idx}_render_temp.jpg")
+                                region.save(temp_path, "JPEG", quality=95)
+                                current_wallpaper_temp_files[idx] = temp_path
+                                logger.info(f"[SPAN MODE] Monitor {idx} extracted temp for rendering")
+                            except Exception as e:
+                                logger.warning(f"[SPAN MODE] Could not extract monitor {idx} from span: {e}")
+                    else:
+                        logger.warning(f"[SPAN MODE] No wallpaper found for monitor {idx} ({monitor_name})")
 
-                # Map using config order
-                for idx in range(len(monitors)):
-                    if idx == target_monitor_idx:
-                        continue
-
-                    if idx < len(ConfigMonitors):
-                        monitor_name = ConfigMonitors[idx].get('name', '')
-                        if monitor_name in label_to_path:
-                            current_wallpapers[idx] = label_to_path[monitor_name]
-                            logger.info(f"[SPAN MODE] Monitor {idx} ({monitor_name}) using cache: {label_to_path[monitor_name]}")
-                        else:
-                            logger.warning(f"[SPAN MODE] No wallpaper found for monitor {idx} ({monitor_name})")
+            if span_img:
+                span_img.close()
 
             # Calculate canvas size
             min_left = min(m.get("left", 0) for m in monitors)
@@ -3346,20 +3414,31 @@ class ModernWallpaperGUI:
             total_height = max_bottom - min_top
             composite = Image.new("RGB", (total_width, total_height), color=(0, 0, 0))
 
+            # Keep track of actual wallpapers used for each monitor (for cache update)
+            applied_wallpapers = {}
+
             # Render each monitor
             for idx, monitor in enumerate(monitors):
                 if idx == target_monitor_idx:
                     # Use selected wallpaper for target monitor
-                    wallpaper_path = selected_wallpaper_path
+                    wallpaper_path_for_cache = original_path  # Store original for cache
+                    wallpaper_path_for_render = selected_wallpaper_path  # Use BMP for rendering
                 else:
                     # Use current wallpaper from cache for other monitors
-                    wallpaper_path = current_wallpapers.get(idx)
-                    if not wallpaper_path or not os.path.exists(wallpaper_path):
+                    wallpaper_path_for_cache = current_wallpapers.get(idx)
+                    # Use extracted temp file for rendering if available (includes overlays)
+                    wallpaper_path_for_render = current_wallpaper_temp_files.get(idx, wallpaper_path_for_cache)
+
+                    if not wallpaper_path_for_cache or not os.path.exists(wallpaper_path_for_cache):
                         # Fallback to black if no wallpaper found
+                        logger.warning(f"[SPAN MODE] No wallpaper for monitor {idx}, skipping")
                         continue
 
-                # Render and paste image
-                img = Image.open(wallpaper_path)
+                # Store the ORIGINAL wallpaper path for cache update later
+                applied_wallpapers[idx] = wallpaper_path_for_cache
+
+                # Render and paste image using the render path
+                img = Image.open(wallpaper_path_for_render)
                 rgb_image = img.convert("RGB")
                 target_size = (monitor.get("width"), monitor.get("height"))
                 rgb_image = ImageOps.fit(rgb_image, target_size, method=Image.Resampling.LANCZOS)
@@ -3388,6 +3467,26 @@ class ModernWallpaperGUI:
             import ctypes
             result = ctypes.windll.user32.SystemParametersInfoW(20, 0, span_path, 3)
             if result:
+                # Update cache with ALL wallpapers that are now applied
+                from config import Monitors as ConfigMonitors
+
+                for idx, wallpaper_path in applied_wallpapers.items():
+                    if idx < len(ConfigMonitors):
+                        monitor_name = ConfigMonitors[idx].get('name', f'Monitor {idx + 1}')
+
+                        # Create metadata for the cache
+                        metadata = {
+                            "preset": "manual",
+                            "provider": "manual" if idx == target_monitor_idx else "span_extracted",
+                            "query": "",
+                            "monitor": monitor_name,
+                            "source_info": f"Applied via span mode" if idx == target_monitor_idx else "Extracted from span",
+                        }
+
+                        # Store in cache (this will update the most recent wallpaper for this monitor)
+                        self.cache_manager.store(wallpaper_path, metadata)
+                        logger.info(f"[SPAN MODE] Updated cache for {monitor_name} (idx={idx}) with {wallpaper_path}")
+
                 self.show_toast(
                     "Wallpaper Changed",
                     f"Applied to {monitor_selection} (span mode)",
@@ -5747,8 +5846,54 @@ Return ONLY the improved English search terms, nothing else."""
 
 
 def main():
-    app = ModernWallpaperGUI()
-    app.run()
+    # Check if GUI is already running
+    import psutil
+    from pathlib import Path
+
+    gui_pid_file = Path(__file__).parent / "gui_modern.pid"
+
+    # Check existing instance
+    if gui_pid_file.exists():
+        try:
+            with open(gui_pid_file, 'r') as f:
+                pid = int(f.read().strip())
+            if psutil.pid_exists(pid):
+                # Check if it's actually gui_modern.py process
+                try:
+                    proc = psutil.Process(pid)
+                    cmdline = ' '.join(proc.cmdline())
+                    if 'gui_modern.py' in cmdline:
+                        print(f"GUI already running (PID: {pid})")
+                        # Try to bring existing window to front
+                        import ctypes
+                        try:
+                            # This is best effort - may not always work
+                            ctypes.windll.user32.SetForegroundWindow(proc.pid)
+                        except:
+                            pass
+                        return
+                except (psutil.NoSuchProcess, psutil.AccessDenied):
+                    pass
+        except:
+            pass
+
+    # Write our PID
+    try:
+        with open(gui_pid_file, 'w') as f:
+            f.write(str(os.getpid()))
+    except:
+        pass
+
+    try:
+        app = ModernWallpaperGUI()
+        app.run()
+    finally:
+        # Clean up PID file on exit
+        try:
+            if gui_pid_file.exists():
+                gui_pid_file.unlink()
+        except:
+            pass
 
 
 if __name__ == "__main__":

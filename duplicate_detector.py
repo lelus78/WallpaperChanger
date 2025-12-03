@@ -16,6 +16,7 @@ class DuplicateDetector:
 
     # Hamming distance thresholds
     EXACT_MATCH = 0  # Identical images
+    NEARLY_IDENTICAL = 3  # Extremely similar (stricter than VERY_SIMILAR)
     VERY_SIMILAR = 5  # Nearly identical (minor edits, compression)
     SIMILAR = 10  # Similar composition/content
     SOMEWHAT_SIMILAR = 15  # Some similarities

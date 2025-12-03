@@ -120,6 +120,7 @@ def find_and_populate_duplicates():
     # Find duplicates with different thresholds
     thresholds = [
         (DuplicateDetector.EXACT_MATCH, "Exact duplicates"),
+        (DuplicateDetector.NEARLY_IDENTICAL, "Nearly identical"),
         (DuplicateDetector.VERY_SIMILAR, "Very similar"),
         (DuplicateDetector.SIMILAR, "Similar"),
     ]

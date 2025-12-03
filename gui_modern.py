@@ -2096,8 +2096,8 @@ class ModernWallpaperGUI:
         sensitivity_menu = ctk.CTkOptionMenu(
             sensitivity_frame,
             variable=self.duplicate_sensitivity,
-            values=["Exact", "Very Similar", "Similar", "Somewhat Similar"],
-            width=150,
+            values=["Exact", "Nearly Identical", "Very Similar", "Similar", "Somewhat Similar"],
+            width=180,
             fg_color=self.COLORS['card_bg'],
             button_color=self.COLORS['accent'],
             button_hover_color=self.COLORS['sidebar_hover']
@@ -2182,6 +2182,7 @@ class ModernWallpaperGUI:
         # Get selected sensitivity
         sensitivity_map = {
             "Exact": DuplicateDetector.EXACT_MATCH,
+            "Nearly Identical": DuplicateDetector.NEARLY_IDENTICAL,
             "Very Similar": DuplicateDetector.VERY_SIMILAR,
             "Similar": DuplicateDetector.SIMILAR,
             "Somewhat Similar": DuplicateDetector.SOMEWHAT_SIMILAR
@@ -2226,13 +2227,15 @@ class ModernWallpaperGUI:
         detector = DuplicateDetector()
         similarity = detector.get_similarity_description(distance)
 
-        # Card container
+        # Card container with unique identifier for this pair
         card = ctk.CTkFrame(
             self.duplicates_content,
             fg_color=self.COLORS['card_bg'],
             corner_radius=12
         )
         card.pack(fill="x", pady=10)
+        # Store reference to the card widget for later removal
+        card._duplicate_pair = (path1, path2)
 
         # Header with similarity info
         header = ctk.CTkFrame(card, fg_color="transparent")
@@ -2258,7 +2261,7 @@ class ModernWallpaperGUI:
         comparison.pack(fill="both", expand=True, padx=20, pady=(0, 20))
 
         # Left wallpaper
-        self._create_duplicate_item(comparison, path1, "left", pair_num, path2)
+        self._create_duplicate_item(comparison, path1, "left", pair_num, path2, card)
 
         # VS label
         ctk.CTkLabel(
@@ -2269,9 +2272,9 @@ class ModernWallpaperGUI:
         ).pack(side="left", padx=20)
 
         # Right wallpaper
-        self._create_duplicate_item(comparison, path2, "right", pair_num, path1)
+        self._create_duplicate_item(comparison, path2, "right", pair_num, path1, card)
 
-    def _create_duplicate_item(self, parent, image_path: str, side: str, pair_num: int, other_path: str):
+    def _create_duplicate_item(self, parent, image_path: str, side: str, pair_num: int, other_path: str, card_widget):
         """Create one side of duplicate comparison"""
         container = ctk.CTkFrame(parent, fg_color=self.COLORS['main_bg'], corner_radius=8)
         container.pack(side="left", fill="both", expand=True, padx=10)
@@ -2328,7 +2331,7 @@ class ModernWallpaperGUI:
             height=32,
             fg_color="#00e676",
             hover_color="#00c853",
-            command=lambda: self._keep_wallpaper(image_path, other_path, pair_num)
+            command=lambda: self._keep_wallpaper(image_path, other_path, card_widget)
         )
         keep_btn.pack(side="left", padx=5)
 
@@ -2340,16 +2343,16 @@ class ModernWallpaperGUI:
             height=32,
             fg_color="#ff6b81",
             hover_color="#ff4757",
-            command=lambda: self._delete_duplicate(image_path, other_path, pair_num)
+            command=lambda: self._delete_duplicate(image_path, other_path, card_widget)
         )
         delete_btn.pack(side="left", padx=5)
 
-    def _keep_wallpaper(self, keep_path: str, delete_path: str, pair_num: int):
+    def _keep_wallpaper(self, keep_path: str, delete_path: str, card_widget):
         """Keep one wallpaper and delete the other"""
-        self._delete_duplicate(delete_path, keep_path, pair_num)
+        self._delete_duplicate(delete_path, keep_path, card_widget)
 
-    def _delete_duplicate(self, delete_path: str, keep_path: str, pair_num: int):
-        """Delete a duplicate wallpaper"""
+    def _delete_duplicate(self, delete_path: str, keep_path: str, card_widget):
+        """Delete a duplicate wallpaper - Fast version without rescanning"""
         try:
             # Remove from cache
             items = self.cache_manager._index.get("items", [])
@@ -2360,20 +2363,28 @@ class ModernWallpaperGUI:
             if os.path.exists(delete_path):
                 os.remove(delete_path)
 
+            # Remove from statistics
+            if delete_path in self.stats_manager.data.get("wallpapers", {}):
+                del self.stats_manager.data["wallpapers"][delete_path]
+                self.stats_manager._save()
+
+            # Remove from thumbnail cache
+            if delete_path in self.thumbnail_cache:
+                del self.thumbnail_cache[delete_path]
+
             # Show success message
             print(f"[DUPLICATES] Deleted: {os.path.basename(delete_path)}")
 
-            # Rescan to update view
-            self._scan_for_duplicates()
+            # Remove the card from UI instantly (no rescan!)
+            card_widget.destroy()
+
+            # Show toast notification
+            self.show_toast("Deleted", f"Removed duplicate wallpaper", duration=1500)
 
         except Exception as e:
             print(f"[ERROR] Failed to delete duplicate: {e}")
-            # Show error message
-            ctk.CTkMessagebox(
-                title="Error",
-                message=f"Failed to delete wallpaper:\n{str(e)}",
-                icon="cancel"
-            )
+            # Show error toast
+            self.show_toast("Error", f"Failed to delete: {str(e)}", duration=3000)
 
     def _show_settings_view(self):
         """Show fully editable settings"""

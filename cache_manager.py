@@ -180,26 +180,27 @@ class CacheManager:
                         continue
 
             # Check for perceptual duplicates (similar images)
-            # Only check duplicates for the same monitor to prevent cross-monitor deduplication
+            # Check ALL monitors to prevent downloading the same wallpaper for different monitors
+            # (unless explicitly set by user via GUI manual application)
             if self.duplicate_detector:
+                # Use stricter threshold (3 instead of 5) for better duplicate detection
+                # Check across ALL monitors, not just the same monitor
                 existing_hashes = {item.get('path'): item.get('perceptual_hash')
                                  for item in self._index.get("items", [])
-                                 if item.get('perceptual_hash') and (
-                                     monitor_index is None or item.get("monitor_index") == monitor_index
-                                 )}
+                                 if item.get('perceptual_hash')}
 
                 if existing_hashes:
                     duplicate_result = self.duplicate_detector.is_duplicate(
                         source_path,
                         existing_hashes,
-                        threshold=DuplicateDetector.VERY_SIMILAR
+                        threshold=DuplicateDetector.NEARLY_IDENTICAL  # Stricter threshold for cross-monitor duplicate prevention
                     )
                     if duplicate_result:
                         dup_path, distance = duplicate_result
                         # Verify file still exists before returning it
                         if os.path.exists(dup_path):
                             similarity = self.duplicate_detector.get_similarity_description(distance)
-                            print(f"[CACHE] {similarity} image detected (distance={distance}), reusing: {os.path.basename(dup_path)}")
+                            print(f"[CACHE] {similarity} image detected cross-monitor (distance={distance}), reusing: {os.path.basename(dup_path)}")
                             return dup_path
                         else:
                             print(f"[CACHE] Similar image found but file missing, will download new")
